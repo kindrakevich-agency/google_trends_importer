@@ -1,0 +1,152 @@
+<?php
+
+/**
+ * @file
+ * Install file for the Google Trends Importer module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function google_trends_importer_schema() {
+  $schema = [];
+
+  // 1. The main table for the trend item
+  $schema['google_trends_data'] = [
+    'description' => 'Stores daily Google Trends data.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique trend ID.',
+      ],
+      'title' => [
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The search term (trend title).',
+      ],
+      'traffic' => [
+        'type' => 'varchar',
+        'length' => 100,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Approximate traffic (e.g., "100K+ searches").',
+      ],
+      'pub_date' => [
+        'type' => 'datetime',
+        'not null' => TRUE,
+        'description' => 'The publication date of the trend.',
+      ],
+      'link' => [
+        'type' => 'varchar',
+        'length' => 2048,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Link to the Google Trends page.',
+      ],
+      'snippet' => [
+        'type' => 'text',
+        'size' => 'normal',
+        'not null' => FALSE,
+        'description' => 'A snippet of news related to the trend.',
+      ],
+      'image_url' => [
+        'type' => 'varchar',
+        'length' => 2048,
+        'not null' => FALSE,
+        'description' => 'The main image URL from the RSS feed.',
+      ],
+      'processed' => [
+        'type' => 'int',
+        'size' => 'tiny',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Flag to mark as processed (0 = no, 1 = yes).',
+      ],
+      'node_id' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'description' => 'The NID of the article created from this trend.',
+      ],
+      'imported_at' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Timestamp when the item was imported.',
+      ],
+    ],
+    'primary key' => ['id'],
+    'unique keys' => [
+      // Prevents duplicate entries based on the link and date.
+      'link_date' => ['link', 'pub_date'],
+    ],
+    'indexes' => [
+      // Index to quickly find unprocessed items.
+      'processed' => ['processed'],
+    ],
+  ];
+
+  // 2. The table for the related news items
+  $schema['google_trends_news_items'] = [
+    'description' => 'Stores related news items for each Google Trend.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique news item ID.',
+      ],
+      'trend_id' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Foreign key linking to google_trends_data.id.',
+      ],
+      'title' => [
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The news item title.',
+      ],
+      'snippet' => [
+        'type' => 'text',
+        'size' => 'normal',
+        'not null' => FALSE,
+        'description' => 'The news item snippet.',
+      ],
+      'url' => [
+        'type' => 'varchar',
+        'length' => 2048,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The news item URL.',
+      ],
+      'source' => [
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The news item source (e.g., "New York Times").',
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'trend_id' => ['trend_id'],
+    ],
+    'foreign keys' => [
+      'trend_item' => [
+        'table' => 'google_trends_data',
+        'columns' => ['trend_id' => 'id'],
+      ],
+    ],
+  ];
+
+  return $schema;
+}

@@ -1,0 +1,11 @@
+{
+    "name": "drupal/google_trends_importer",
+    "type": "drupal-module",
+    "description": "Imports Google Trends and creates articles using OpenAI.",
+    "require": {
+        "openai-php/client": "^0.3.1",
+        "symfony/dom-crawler": "^6.4 || ^7.0",
+        "symfony/css-selector": "^6.4 || ^7.0",
+        "fivefilters/readability.php": "^3.0"
+    }
+}

@@ -1,0 +1,110 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - node
+    - user
+name: imported_trends
+label: 'Imported Trends'
+description: 'A list of imported Google Trends and their generated articles.'
+tag: ''
+base_table: google_trends_data
+base_field: id
+display:
+  default:
+    id: default
+    display_title: Default
+    display_plugin: default
+    position: 0
+    display_options:
+      title: 'Imported Trends'
+      fields:
+        title:
+          id: title
+          table: google_trends_data
+          field: title
+          relationship: none
+          plugin_id: field
+          label: 'Trend Title'
+        traffic:
+          id: traffic
+          table: google_trends_data
+          field: traffic
+          relationship: none
+          plugin_id: field
+          label: Traffic
+        view_node:
+          id: view_node
+          table: node
+          field: view_node
+          relationship: node_id
+          plugin_id: field
+          label: 'Generated Article'
+          text: 'View Article'
+      pager:
+        type: mini
+        options:
+          items_per_page: 10
+      exposed_form:
+        type: basic
+      access:
+        type: perm
+        options:
+          perm: 'access administration pages'
+      cache:
+        type: tag
+        options: {}
+      empty: {  }
+      sorts:
+        id:
+          id: id
+          table: google_trends_data
+          field: id
+          relationship: none
+          plugin_id: field
+          order: DESC
+      arguments: {  }
+      filters: {  }
+      style:
+        type: table
+      row:
+        type: fields
+      relationships:
+        node_id:
+          id: node_id
+          table: google_trends_data
+          field: node_id
+          relationship: none
+          plugin_id: standard
+          required: false
+      header: {  }
+      footer: {  }
+    cache_metadata:
+      contexts:
+        - 'languages:language_content'
+        - 'languages:language_interface'
+        - user.permissions
+      max-age: -1
+      tags:
+        - 'config:node.type.article'
+  page_1:
+    id: page_1
+    display_title: Page
+    display_plugin: page
+    position: 1
+    display_options:
+      display_extenders: {  }
+      path: admin/content/imported-trends
+      menu:
+        type: normal
+        title: 'Imported Trends'
+        menu_name: admin
+        parent: system.admin_content
+    cache_metadata:
+      contexts:
+        - 'languages:language_content'
+        - 'languages:language_interface'
+        - user.permissions
+      max-age: -1
+      tags:
+        - 'config:node.type.article'

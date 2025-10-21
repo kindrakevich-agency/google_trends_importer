@@ -1,0 +1,9 @@
+name: 'Google Trends Importer'
+type: module
+description: 'Fetches daily Google Trends and creates unpublished articles using OpenAI.'
+core_version_requirement: ^10 || ^11
+package: 'Custom'
+dependencies:
+  - node
+  - views
+  - file

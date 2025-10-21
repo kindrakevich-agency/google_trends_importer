@@ -1,0 +1,17 @@
+<?php
+
+/**
+ * @file
+ * Main module file for the Google Trends Importer module.
+ */
+
+/**
+ * Implements hook_cron().
+ */
+function google_trends_importer_cron() {
+  // Get the fetcher service.
+  $fetcher = \Drupal::service('google_trends_importer.fetcher');
+  
+  // Run the import.
+  $fetcher->fetchAndSaveTrends();
+}
