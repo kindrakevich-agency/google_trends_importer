@@ -5,6 +5,7 @@ dependencies:
   module:
     - node
     - user
+id: imported_trends
 name: imported_trends
 label: 'Imported Trends'
 description: 'A list of imported Google Trends and their generated articles.'
