@@ -310,7 +310,7 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         $node = $node_storage->create([
             'type' => 'article',
             'title' => $generated_title,
-            'status' => 0,
+            'status' => 1,
             'body' => [
                 'value' => $body_text,
                 'format' => 'full_html',
