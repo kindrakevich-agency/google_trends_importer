@@ -8,3 +8,7 @@ google_trends_importer.settings:
     trends_url:
       type: string
       label: 'Google Trends RSS URL'
+    # Add the new prompt setting definition
+    openai_prompt:
+      type: text # Use 'text' for potentially long prompts
+      label: 'OpenAI Prompt Template'

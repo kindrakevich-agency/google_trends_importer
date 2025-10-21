@@ -1,146 +1,343 @@
 <?php
 
-namespace Drupal\google_trends_importer\Service;
+namespace Drupal\google_trends_importer\Plugin\QueueWorker;
 
+// ... (keep all existing 'use' statements and class definition) ...
+use Drupal\Core\Queue\QueueWorkerBase;
+use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
 use Drupal\Core\Database\Connection;
+use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\file\FileRepositoryInterface;
 use GuzzleHttp\ClientInterface;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
-use Drupal\Core\Queue\QueueFactory;
-use Drupal\Core\Config\ConfigFactoryInterface;
+use OpenAI\Client;
+use fivefilters\Readability\Readability;
+use fivefilters\Readability\Configuration;
+use Symfony\Component\DependencyInjection\ContainerInterface;
+use Drupal\Core\Queue\SuspendQueueException;
+use Drupal\Core\File\FileSystemInterface;
+
 
 /**
- * Service to fetch trends and add them to the processing queue.
+ * Processes a Trend Item from the queue.
+ *
+ * @QueueWorker(
+ * id = "google_trends_processor",
+ * title = @Translation("Google Trends Processor"),
+ * cron = {"time" = 60}
+ * )
  */
-class TrendsFetcher {
+class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInterface {
 
-  protected $httpClient;
-  protected $database;
-  protected $logger;
-  protected $queue;
-  protected $config;
+    // ... (properties, __construct, create remain the same) ...
+    protected $database;
+    protected $openAiClient;
+    protected $httpClient;
+    protected $logger;
+    protected $entityTypeManager;
+    protected $fileRepository;
+    protected $fileSystem;
+    protected $configFactory;
 
-  /**
-   * Constructs a new TrendsFetcher object.
-   */
-  public function __construct(ClientInterface $http_client, Connection $database, LoggerChannelFactoryInterface $logger_factory, QueueFactory $queue_factory, ConfigFactoryInterface $config_factory) {
-    $this->httpClient = $http_client;
-    $this->database = $database;
-    $this->logger = $logger_factory->get('google_trends_importer');
-    $this->config = $config_factory->get('google_trends_importer.settings');
-    $this->queue = $queue_factory->get('google_trends_processor');
-  }
-
-  /**
-   * Fetches trends, saves them, and queues new ones for processing.
-   */
-  public function fetchAndSaveTrends() {
-    $trends_url = $this->config->get('trends_url');
-    if (empty($trends_url)) {
-      $this->logger->warning('Google Trends RSS URL is not configured. Aborting import.');
-      return;
+   /**
+    * Constructs a new ProcessTrend object.
+    */
+    public function __construct(
+      array $configuration,
+      $plugin_id,
+      $plugin_definition,
+      Connection $database,
+      Client $openAiClient,
+      ClientInterface $httpClient,
+      LoggerChannelFactoryInterface $logger_factory,
+      EntityTypeManagerInterface $entityTypeManager,
+      FileRepositoryInterface $fileRepository,
+      ConfigFactoryInterface $configFactory
+    ) {
+      parent::__construct($configuration, $plugin_id, $plugin_definition);
+      $this->database = $database;
+      $this->openAiClient = $openAiClient;
+      $this->httpClient = $httpClient;
+      $this->logger = $logger_factory->get('google_trends_importer');
+      $this->entityTypeManager = $entityTypeManager;
+      $this->fileRepository = $fileRepository;
+      $this->configFactory = $configFactory;
+      $this->fileSystem = 'public://';
     }
 
-    $this->logger->info('Starting Google Trends import...');
-    $import_count = 0;
+   /**
+    * {@inheritdoc}
+    */
+    public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
+      $config_factory = $container->get('config.factory');
+      $config = $config_factory->get('google_trends_importer.settings');
+      $api_key = $config->get('openai_api_key');
 
-    try {
-      $response = $this->httpClient->request('GET', $trends_url);
-      $xml_string = (string) $response->getBody();
-      // Load XML, LIBXML_NOCDATA helps with CDATA sections if any
-      $xml = simplexml_load_string($xml_string, 'SimpleXMLElement', LIBXML_NOCDATA);
-
-      if ($xml === FALSE) {
-        $this->logger->error('Failed to parse Google Trends RSS feed.');
-        return;
+      $openai_client = null;
+      if (!empty($api_key)) {
+         try {
+             $openai_client = \OpenAI::client($api_key);
+         } catch (\Exception $e) {
+             $container->get('logger.factory')->get('google_trends_importer')
+                 ->error('Failed to create OpenAI client: @message', ['@message' => $e->getMessage()]);
+         }
+      } else {
+          $container->get('logger.factory')->get('google_trends_importer')
+              ->warning('OpenAI API Key is not configured. OpenAI functionality will be disabled.');
       }
 
-      // Get the namespace URI for 'ht' ONCE
-      $namespaces = $xml->getNamespaces(TRUE);
-      $ht_ns_uri = $namespaces['ht'] ?? null; // Use null coalescing for safety
+      return new static(
+        $configuration,
+        $plugin_id,
+        $plugin_definition,
+        $container->get('database'),
+        $openai_client,
+        $container->get('http_client'),
+        $container->get('logger.factory'),
+        $container->get('entity_type.manager'),
+        $container->get('file.repository'),
+        $config_factory
+      );
+    }
 
-      if (!$ht_ns_uri) {
-         $this->logger->error('Could not find the "ht" namespace in the RSS feed.');
-         return; // Cannot proceed without the namespace
-      }
 
+   /**
+    * {@inheritdoc}
+    */
+    public function processItem($data) {
+        $trend_id = $data;
+        // Define the separator
+        $separator = '---TITLE_SEPARATOR---';
 
-      if (!isset($xml->channel->item)) {
-         $this->logger->warning('No <item> elements found in the RSS feed channel.');
-         return;
-      }
-
-
-      foreach ($xml->channel->item as $item) {
-        // Access children of <item> using the namespace URI
-        $ht_children = $item->children($ht_ns_uri);
-
-        $pubDate = new \DateTime((string) $item->pubDate);
-        $pub_date_string = $pubDate->format('Y-m-d H:i:s');
-        $link_string = (string) $item->link;
-
-        // Check if this trend already exists.
-        $query = $this->database->select('google_trends_data', 'gtd')
-          ->fields('gtd', ['id'])
-          ->condition('link', $link_string)
-          ->condition('pub_date', $pub_date_string)
-          ->range(0, 1);
-        $trend_id = $query->execute()->fetchField();
-
-        if (!$trend_id) {
-          // This is a new trend. Insert it.
-          $main_fields = [
-            'title' => (string) $item->title,
-            // Access traffic using the namespace children object
-            'traffic' => (string) $ht_children->approx_traffic,
-            'pub_date' => $pub_date_string,
-            'link' => $link_string,
-            'snippet' => (string) $item->description,
-            // Access picture using the namespace children object
-            'image_url' => (string) $ht_children->picture,
-            'processed' => 0, // Mark as unprocessed
-            'node_id' => NULL,
-            'imported_at' => \Drupal::time()->getRequestTime(),
-          ];
-
-          $trend_id = $this->database->insert('google_trends_data')
-            ->fields($main_fields)
-            ->execute();
-
-          // Save all related news items.
-          // Iterate over news_item elements using the namespace children object
-          foreach ($ht_children->news_item as $news_item) {
-             // Access children of <ht:news_item> using the same namespace URI
-             $news_item_children = $news_item->children($ht_ns_uri);
-
-             $news_fields = [
-                'trend_id' => $trend_id,
-                'title' => (string) $news_item_children->news_item_title,
-                'snippet' => (string) $news_item_children->news_item_snippet,
-                'url' => (string) $news_item_children->news_item_url,
-                'source' => (string) $news_item_children->news_item_source,
-             ];
-             $this->database->insert('google_trends_news_items')
-                ->fields($news_fields)
-                ->execute();
-          }
-
-          // Add the new trend ID to the queue for processing.
-          $this->queue->createItem($trend_id);
-          $import_count++;
+        if (!$this->openAiClient) {
+            $this->logger->error('OpenAI client is not available (API Key missing or invalid?). Cannot process Trend ID @id.', ['@id' => $trend_id]);
+            return;
         }
-      }
 
-      if ($import_count > 0) {
-        $this->logger->info('Queued @count new Google Trends items for processing.', ['@count' => $import_count]);
-      }
-      else {
-        $this->logger->info('Google Trends import ran, but found no new items.');
-      }
+        try {
+            // ... (Steps 1, 2, 3 remain the same) ...
+            // 1. Get Trend
+            $trend = $this->database->select('google_trends_data', 'gtd')
+              ->fields('gtd')
+              ->condition('id', $trend_id)
+              ->execute()
+              ->fetch();
 
+            if (!$trend) {
+              $this->logger->error('Trend ID @id not found in google_trends_data table. Skipping.', ['@id' => $trend_id]);
+              return;
+            }
+
+            // 2. Get News Items
+            $news_items = $this->database->select('google_trends_news_items', 'gtn')
+              ->fields('gtn')
+              ->condition('trend_id', $trend_id)
+              ->execute()
+              ->fetchAll();
+
+            if (empty($news_items)) {
+              $this->logger->warning('No news items found for Trend ID @id. Marking as processed without creating article.', ['@id' => $trend_id]);
+              $this->database->update('google_trends_data')
+                ->fields(['processed' => 1])
+                ->condition('id', $trend_id)
+                ->execute();
+              return;
+            }
+
+            // 3. Scrape text
+            $all_scraped_text = '';
+            foreach ($news_items as $item) {
+              $all_scraped_text .= $this->scrapeUrlWithReadability($item->url) . "\n\n---\n\n";
+            }
+
+            if (empty(trim($all_scraped_text))) {
+              $this->logger->warning('Readability scraping returned no text for Trend ID @id. Marking as processed without creating article.', ['@id' => $trend_id]);
+               $this->database->update('google_trends_data')
+                ->fields(['processed' => 1])
+                ->condition('id', $trend_id)
+                ->execute();
+              return;
+            }
+
+
+            // 4. Send to OpenAI
+            $this->logger->info(sprintf('Sending Trend ID %d (%s) to OpenAI.', $trend->id, $trend->title));
+            $config = $this->configFactory->get('google_trends_importer.settings');
+            $prompt_template = $config->get('openai_prompt');
+
+            if (empty($prompt_template)) {
+                $this->logger->error('OpenAI Prompt Template is not configured. Cannot process Trend ID @id.', ['@id' => $trend_id]);
+                throw new \Exception('OpenAI Prompt Template is empty.');
+            }
+
+            // Use sprintf with the template
+            $prompt = sprintf(
+                $prompt_template,
+                $trend->title, // Pass original title for context
+                $all_scraped_text
+            );
+
+            $result = $this->openAiClient->chat()->create([
+                'model' => 'gpt-3.5-turbo', // Consider gpt-4 for better results if available
+                'messages' => [
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+            ]);
+
+            $full_response = $result->choices[0]->message->content;
+
+            // *** SPLIT the response ***
+            $parts = explode($separator, $full_response, 2);
+
+            if (count($parts) !== 2) {
+                // Separator not found, log error and maybe use original title as fallback
+                $this->logger->error('OpenAI response for Trend ID @id did not contain the expected separator "@sep". Using original trend title.', [
+                    '@id' => $trend_id,
+                    '@sep' => $separator
+                ]);
+                $generated_title = $trend->title; // Fallback title
+                $article_body = trim($full_response); // Use the whole response as body
+            } else {
+                $generated_title = trim($parts[0]);
+                $article_body = trim($parts[1]);
+            }
+            // *** End splitting logic ***
+
+            // 5. Create Node using GENERATED title and body
+            $this->logger->info(sprintf('Creating article for Trend ID %d with generated title: %s', $trend->id, $generated_title));
+            // Pass the generated title to createArticleNode
+            $this->createArticleNode($trend, $generated_title, $article_body);
+
+            // 6. Mark as processed
+            $this->database->update('google_trends_data')
+                ->fields(['processed' => 1])
+                ->condition('id', $trend_id)
+                ->execute();
+
+            $this->logger->info(sprintf('Successfully processed and created article for Trend ID %d.', $trend->id));
+
+        } catch (\Exception $e) {
+            $this->logger->error('Failed to process Trend ID @id: @message', [
+                '@id' => $trend_id,
+                '@message' => $e->getMessage(),
+            ]);
+            throw new SuspendQueueException($e->getMessage(), $e->getCode(), $e);
+        }
     }
-    catch (\Exception $e) {
-      $this->logger->error('Failed to import Google Trends: @message', ['@message' => $e->getMessage()]);
-    }
-  }
 
+    // ... (scrapeUrlWithReadability remains the same) ...
+     /**
+     * Helper function to scrape text from a URL using Readability.
+     */
+    private function scrapeUrlWithReadability($url) {
+        try {
+            $response = $this->httpClient->request('GET', $url, ['timeout' => 10]);
+            $html = (string) $response->getBody();
+
+            $config = new Configuration();
+            $config->setFixRelativeURLs(true);
+            $config->setOriginalURL($url);
+
+            $readability = new Readability($config);
+            $readability->parse($html);
+
+            $htmlContent = $readability->getContent();
+            if (empty(trim(strip_tags($htmlContent)))) {
+                $this->logger->warning('Readability could not extract meaningful content for URL @url', ['@url' => $url]);
+                return '';
+            }
+
+            $plainTextContent = strip_tags($htmlContent);
+            $plainTextContent = html_entity_decode($plainTextContent, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $plainTextContent = preg_replace('/\s+/', ' ', trim($plainTextContent));
+
+            // Return only title and plain text content for the prompt context
+            return $readability->getTitle() . "\n\n" . $plainTextContent;
+
+        } catch (\Exception $e) {
+            $this->logger->warning('Failed to scrape URL @url: @message', [
+                '@url' => $url,
+                '@message' => $e->getMessage(),
+            ]);
+            return '';
+        }
+    }
+
+
+    /**
+     * Helper function to create the node and save the node ID.
+     * *** ADDED $generated_title parameter ***
+     */
+    private function createArticleNode($trend, $generated_title, $body_text) {
+        $node_storage = $this->entityTypeManager->getStorage('node');
+        $file_system = \Drupal::service('file_system');
+
+        // ... (Image handling code remains the same) ...
+        $file_id = NULL;
+        if (!empty($trend->image_url)) {
+            try {
+                $file_data = @file_get_contents($trend->image_url);
+                if ($file_data === FALSE) {
+                   $error = error_get_last();
+                   $this->logger->warning('Failed to download image for Trend ID @id from @url: @message', [
+                      '@id' => $trend->id,
+                      '@url' => $trend->image_url,
+                      '@message' => $error['message'] ?? 'Unknown error',
+                   ]);
+                } elseif (!empty($file_data)) {
+                    $filename = 'trend_image_' . $trend->id . '.jpg';
+                    $directory = $this->fileSystem . '/google_trends/';
+                    $file_system->prepareDirectory($directory, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
+
+                    $destination = $directory . $filename;
+
+                    $file = $this->fileRepository->writeData($file_data, $destination, FileSystemInterface::EXISTS_REPLACE);
+                    if ($file) {
+                        $file_id = $file->id();
+                    } else {
+                        $this->logger->error('Failed to save file for Trend ID @id to @dest', [
+                            '@id' => $trend->id,
+                            '@dest' => $destination,
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                $this->logger->warning('Exception during image download/save for Trend ID @id: @message', [
+                    '@id' => $trend->id,
+                    '@message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+
+        // *** Use the $generated_title ***
+        $node = $node_storage->create([
+            'type' => 'article',
+            'title' => $generated_title, // <-- Use generated title
+            'status' => 0,
+            'body' => [
+                'value' => $body_text, // This is already the HTML body
+                'format' => 'full_html', // Ensure this format allows the HTML tags you expect
+            ],
+        ]);
+
+        // *** Use generated title for image alt text if original is missing/generic ***
+        $alt_text = !empty($generated_title) ? $generated_title : $trend->title;
+        if ($file_id) {
+            if ($node->hasField('field_image')) {
+                $node->field_image->target_id = $file_id;
+                $node->field_image->alt = $alt_text; // Use better alt text
+            } else {
+                $this->logger->warning('Node type "article" is missing the "field_image" field. Cannot attach image for Trend ID @id.', ['@id' => $trend->id]);
+            }
+        }
+
+        $node->save();
+
+        $this->database->update('google_trends_data')
+            ->fields(['node_id' => $node->id()])
+            ->condition('id', $trend->id)
+            ->execute();
+    }
 }
