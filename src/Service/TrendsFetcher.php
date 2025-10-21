@@ -4,8 +4,8 @@ namespace Drupal\google_trends_importer\Service;
 
 use Drupal\Core\Database\Connection;
 use GuzzleHttp\ClientInterface;
-use Drupal\Core\Logger\LoggerFactoryInterface;
-use Drupal\Core\Queue\QueueFactoryInterface; // <-- Add this
+use Drupal\Core\Logger\LoggerChannelFactoryInterface;
+use Drupal\Core\Queue\QueueFactory;
 use Drupal\Core\Config\ConfigFactoryInterface;
 
 /**
@@ -21,19 +21,12 @@ class TrendsFetcher {
 
   /**
    * Constructs a new TrendsFetcher object.
-   *
-   * @param \GuzzleHttp\ClientInterface $http_client
-   * @param \Drupal\Core\Database\Connection $database
-   * @param \Drupal\Core\Logger\LoggerFactoryInterface $logger_factory
-   * @param \Drupal\Core\Queue\QueueFactoryInterface $queue_factory  // <-- Update this
-   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
    */
-  public function __construct(ClientInterface $http_client, Connection $database, LoggerFactoryInterface $logger_factory, QueueFactoryInterface $queue_factory, ConfigFactoryInterface $config_factory) {
+  public function __construct(ClientInterface $http_client, Connection $database, LoggerChannelFactoryInterface $logger_factory, QueueFactory $queue_factory, ConfigFactoryInterface $config_factory) {
     $this->httpClient = $http_client;
     $this->database = $database;
     $this->logger = $logger_factory->get('google_trends_importer');
     $this->config = $config_factory->get('google_trends_importer.settings');
-    // Use the factory to get the queue by its machine name
     $this->queue = $queue_factory->get('google_trends_processor');
   }
 
@@ -53,16 +46,34 @@ class TrendsFetcher {
     try {
       $response = $this->httpClient->request('GET', $trends_url);
       $xml_string = (string) $response->getBody();
+      // Load XML, LIBXML_NOCDATA helps with CDATA sections if any
       $xml = simplexml_load_string($xml_string, 'SimpleXMLElement', LIBXML_NOCDATA);
 
-      if ($xml === FALSE || !isset($xml->channel->item)) {
+      if ($xml === FALSE) {
         $this->logger->error('Failed to parse Google Trends RSS feed.');
         return;
       }
 
+      // Get the namespace URI for 'ht' ONCE
+      $namespaces = $xml->getNamespaces(TRUE);
+      $ht_ns_uri = $namespaces['ht'] ?? null; // Use null coalescing for safety
+
+      if (!$ht_ns_uri) {
+         $this->logger->error('Could not find the "ht" namespace in the RSS feed.');
+         return; // Cannot proceed without the namespace
+      }
+
+
+      if (!isset($xml->channel->item)) {
+         $this->logger->warning('No <item> elements found in the RSS feed channel.');
+         return;
+      }
+
+
       foreach ($xml->channel->item as $item) {
-        $ht_namespaces = $item->children('https://trends.google.com/trends/trendingsearches/daily');
-        
+        // Access children of <item> using the namespace URI
+        $ht_children = $item->children($ht_ns_uri);
+
         $pubDate = new \DateTime((string) $item->pubDate);
         $pub_date_string = $pubDate->format('Y-m-d H:i:s');
         $link_string = (string) $item->link;
@@ -79,11 +90,13 @@ class TrendsFetcher {
           // This is a new trend. Insert it.
           $main_fields = [
             'title' => (string) $item->title,
-            'traffic' => (string) $ht_namespaces->approx_traffic,
+            // Access traffic using the namespace children object
+            'traffic' => (string) $ht_children->approx_traffic,
             'pub_date' => $pub_date_string,
             'link' => $link_string,
             'snippet' => (string) $item->description,
-            'image_url' => (string) $ht_namespaces->picture, // Get the image URL
+            // Access picture using the namespace children object
+            'image_url' => (string) $ht_children->picture,
             'processed' => 0, // Mark as unprocessed
             'node_id' => NULL,
             'imported_at' => \Drupal::time()->getRequestTime(),
@@ -94,17 +107,21 @@ class TrendsFetcher {
             ->execute();
 
           // Save all related news items.
-          foreach ($ht_namespaces->news_item as $news_item) {
-            $news_fields = [
-              'trend_id' => $trend_id,
-              'title' => (string) $news_item->news_item_title,
-              'snippet' => (string) $news_item->news_item_snippet,
-              'url' => (string) $news_item->news_item_url,
-              'source' => (string) $news_item->news_item_source,
-            ];
-            $this->database->insert('google_trends_news_items')
-              ->fields($news_fields)
-              ->execute();
+          // Iterate over news_item elements using the namespace children object
+          foreach ($ht_children->news_item as $news_item) {
+             // Access children of <ht:news_item> using the same namespace URI
+             $news_item_children = $news_item->children($ht_ns_uri);
+
+             $news_fields = [
+                'trend_id' => $trend_id,
+                'title' => (string) $news_item_children->news_item_title,
+                'snippet' => (string) $news_item_children->news_item_snippet,
+                'url' => (string) $news_item_children->news_item_url,
+                'source' => (string) $news_item_children->news_item_source,
+             ];
+             $this->database->insert('google_trends_news_items')
+                ->fields($news_fields)
+                ->execute();
           }
 
           // Add the new trend ID to the queue for processing.
@@ -115,12 +132,12 @@ class TrendsFetcher {
 
       if ($import_count > 0) {
         $this->logger->info('Queued @count new Google Trends items for processing.', ['@count' => $import_count]);
-      } 
+      }
       else {
         $this->logger->info('Google Trends import ran, but found no new items.');
       }
 
-    } 
+    }
     catch (\Exception $e) {
       $this->logger->error('Failed to import Google Trends: @message', ['@message' => $e->getMessage()]);
     }

@@ -1,22 +1,19 @@
 services:
   google_trends_importer.fetcher:
     class: 'Drupal\google_trends_importer\Service\TrendsFetcher'
-    # The 4th argument is now @queue
     arguments: ['@http_client', '@database', '@logger.factory', '@queue', '@config.factory']
 
-  google_trends_importer.openai_client:
-    class: OpenAI\Client
-    factory: ['OpenAI', 'factory']
-    calls:
-      - [withApiKey, ['%google_trends_importer.openai_api_key%']]
-      - [withHttpClient, ['@http_client']]
-      - [make]
+  # OpenAI client service definition is correctly removed.
+  # Parameters section is correctly removed.
 
   google_trends_importer.process_trend_worker:
     class: 'Drupal\google_trends_importer\Plugin\QueueWorker\ProcessTrend'
+    # REMOVE the line below referring to the non-existent service
+    # - '@google_trends_importer.openai_client'
+    # Keep the rest of the arguments (even though create() overrides them,
+    # leaving them doesn't hurt and might be needed if create() is removed later)
     arguments:
       - '@database'
-      - '@google_trends_importer.openai_client'
       - '@http_client'
       - '@logger.factory'
       - '@entity_type.manager'
@@ -24,6 +21,3 @@ services:
       - '@config.factory'
     tags:
       - { name: 'queue_worker', plugin_id: 'google_trends_processor' }
-
-parameters:
-  google_trends_importer.openai_api_key: ''

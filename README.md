@@ -32,17 +32,16 @@ It is designed to be a robust, automated content creation assistant. It uses Dru
     Copy the `google_trends_importer` directory into your project's `/modules/custom` folder.
 
 2.  **Install Composer Dependencies**
-    This module declares its PHP library dependencies in its `composer.json` file. Navigate to your Drupal project's **root directory** (the one with the main `composer.json` file) and run Composer's install or update command.
+    This module requires several external PHP libraries. Navigate to your Drupal project's **root directory** (the one with the main `composer.json` file) and run the following commands one by one:
 
     ```bash
     # From your Drupal project root
-    composer install
+    composer require openai-php/client:"^0.3.1"
+    composer require symfony/dom-crawler:"^6.4 || ^7.0"
+    composer require symfony/css-selector:"^6.4 || ^7.0"
+    composer require fivefilters/readability.php:"^3.0"
     ```
-    Or, if you need to update dependencies:
-    ```bash
-    composer update drupal/google_trends_importer --with-dependencies
-    ```
-    This will read the module's `composer.json` and automatically download `openai-php/client`, `symfony/dom-crawler`, and the other required libraries.
+    This will download the necessary libraries and update your project's main `composer.json` and `composer.lock` files.
 
 3.  **Enable the Module**
     Log in as an administrator, go to **Extend** (`/admin/extend`), find "Google Trends Importer", and click **Install**.

@@ -5,3 +5,13 @@ google_trends_importer.settings_form:
     _title: 'Google Trends Importer Settings'
   requirements:
     _permission: 'administer site configuration'
+
+# New route for the clear confirmation form
+google_trends_importer.clear_form:
+  path: '/admin/config/system/google-trends-importer/clear'
+  defaults:
+    _form: '\Drupal\google_trends_importer\Form\ClearTrendsForm'
+    _title: 'Clear Imported Trends Data'
+  requirements:
+    # Restrict to users who can administer the site configuration
+    _permission: 'administer site configuration'
