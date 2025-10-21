@@ -36,7 +36,6 @@ function google_trends_importer_schema() {
         'description' => 'Approximate traffic (e.g., "100K+ searches").',
       ],
       'pub_date' => [
-        // This is the correct definition for a DATETIME column
         'mysql_type' => 'DATETIME',
         'not null' => TRUE,
         'description' => 'The publication date of the trend.',
@@ -46,7 +45,7 @@ function google_trends_importer_schema() {
         'length' => 2048,
         'not null' => TRUE,
         'default' => '',
-        'description' => 'Link to the Google Trends page.',
+        'description' => 'Link to the Google Trends page (often the feed URL).', // Updated description
       ],
       'snippet' => [
         'type' => 'text',
@@ -84,56 +83,60 @@ function google_trends_importer_schema() {
     ],
     'primary key' => ['id'],
     'unique keys' => [
-      'link_date' => ['link', 'pub_date'],
+      // *** UPDATED UNIQUE KEY ***
+      // Use 'title' and 'pub_date' to determine uniqueness
+      'title_date' => ['title', 'pub_date'],
     ],
     'indexes' => [
       'processed' => ['processed'],
+      // Add an index on title for faster lookups if needed
+      'title' => ['title'],
     ],
   ];
 
-  // 2. The table for the related news items
+  // 2. The table for the related news items (remains the same)
   $schema['google_trends_news_items'] = [
     'description' => 'Stores related news items for each Google Trend.',
-    'fields' => [
-      'id' => [
+    'fields' => [ /* ... fields ... */
+        'id' => [
         'type' => 'serial',
         'unsigned' => TRUE,
         'not null' => TRUE,
         'description' => 'Primary Key: Unique news item ID.',
-      ],
-      'trend_id' => [
+        ],
+        'trend_id' => [
         'type' => 'int',
         'unsigned' => TRUE,
         'not null' => TRUE,
         'description' => 'Foreign key linking to google_trends_data.id.',
-      ],
-      'title' => [
+        ],
+        'title' => [
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
         'default' => '',
         'description' => 'The news item title.',
-      ],
-      'snippet' => [
+        ],
+        'snippet' => [
         'type' => 'text',
         'size' => 'normal',
         'not null' => FALSE,
         'description' => 'The news item snippet.',
-      ],
-      'url' => [
+        ],
+        'url' => [
         'type' => 'varchar',
         'length' => 2048,
         'not null' => TRUE,
         'default' => '',
         'description' => 'The news item URL.',
-      ],
-      'source' => [
+        ],
+        'source' => [
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
         'default' => '',
         'description' => 'The news item source (e.g., "New York Times").',
-      ],
+        ],
     ],
     'primary key' => ['id'],
     'indexes' => [
