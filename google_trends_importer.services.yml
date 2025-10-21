@@ -1,7 +1,8 @@
 services:
   google_trends_importer.fetcher:
     class: 'Drupal\google_trends_importer\Service\TrendsFetcher'
-    arguments: ['@http_client', '@database', '@logger.factory', '@queue.google_trends_processor', '@config.factory']
+    # The 4th argument is now @queue
+    arguments: ['@http_client', '@database', '@logger.factory', '@queue', '@config.factory']
 
   google_trends_importer.openai_client:
     class: OpenAI\Client

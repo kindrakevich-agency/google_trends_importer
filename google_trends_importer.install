@@ -36,7 +36,8 @@ function google_trends_importer_schema() {
         'description' => 'Approximate traffic (e.g., "100K+ searches").',
       ],
       'pub_date' => [
-        'type' => 'datetime',
+        // This is the correct definition for a DATETIME column
+        'mysql_type' => 'DATETIME',
         'not null' => TRUE,
         'description' => 'The publication date of the trend.',
       ],
@@ -83,11 +84,9 @@ function google_trends_importer_schema() {
     ],
     'primary key' => ['id'],
     'unique keys' => [
-      // Prevents duplicate entries based on the link and date.
       'link_date' => ['link', 'pub_date'],
     ],
     'indexes' => [
-      // Index to quickly find unprocessed items.
       'processed' => ['processed'],
     ],
   ];

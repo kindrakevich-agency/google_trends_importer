@@ -5,7 +5,7 @@ namespace Drupal\google_trends_importer\Service;
 use Drupal\Core\Database\Connection;
 use GuzzleHttp\ClientInterface;
 use Drupal\Core\Logger\LoggerFactoryInterface;
-use Drupal\Core\Queue\QueueFactory;
+use Drupal\Core\Queue\QueueFactoryInterface; // <-- Add this
 use Drupal\Core\Config\ConfigFactoryInterface;
 
 /**
@@ -21,13 +21,20 @@ class TrendsFetcher {
 
   /**
    * Constructs a new TrendsFetcher object.
+   *
+   * @param \GuzzleHttp\ClientInterface $http_client
+   * @param \Drupal\Core\Database\Connection $database
+   * @param \Drupal\Core\Logger\LoggerFactoryInterface $logger_factory
+   * @param \Drupal\Core\Queue\QueueFactoryInterface $queue_factory  // <-- Update this
+   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
    */
-  public function __construct(ClientInterface $http_client, Connection $database, LoggerFactoryInterface $logger_factory, QueueFactory $queue_factory, ConfigFactoryInterface $config_factory) {
+  public function __construct(ClientInterface $http_client, Connection $database, LoggerFactoryInterface $logger_factory, QueueFactoryInterface $queue_factory, ConfigFactoryInterface $config_factory) {
     $this->httpClient = $http_client;
     $this->database = $database;
     $this->logger = $logger_factory->get('google_trends_importer');
-    $this->queue = $queue_factory->get('google_trends_processor');
     $this->config = $config_factory->get('google_trends_importer.settings');
+    // Use the factory to get the queue by its machine name
+    $this->queue = $queue_factory->get('google_trends_processor');
   }
 
   /**
