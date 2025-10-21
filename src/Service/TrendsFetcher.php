@@ -30,7 +30,7 @@ use Drupal\Core\File\FileSystemInterface;
  */
 class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInterface {
 
-    // ... (properties, __construct, create remain the same) ...
+    // ... (properties, __construct, create, processItem, scrapeUrlWithReadability methods remain the same) ...
     protected $database;
     protected $openAiClient;
     protected $httpClient;
@@ -101,13 +101,11 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       );
     }
 
-
    /**
     * {@inheritdoc}
     */
     public function processItem($data) {
         $trend_id = $data;
-        // Define the separator
         $separator = '---TITLE_SEPARATOR---';
 
         if (!$this->openAiClient) {
@@ -116,8 +114,6 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         }
 
         try {
-            // ... (Steps 1, 2, 3 remain the same) ...
-            // 1. Get Trend
             $trend = $this->database->select('google_trends_data', 'gtd')
               ->fields('gtd')
               ->condition('id', $trend_id)
@@ -129,7 +125,6 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
               return;
             }
 
-            // 2. Get News Items
             $news_items = $this->database->select('google_trends_news_items', 'gtn')
               ->fields('gtn')
               ->condition('trend_id', $trend_id)
@@ -145,7 +140,6 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
               return;
             }
 
-            // 3. Scrape text
             $all_scraped_text = '';
             foreach ($news_items as $item) {
               $all_scraped_text .= $this->scrapeUrlWithReadability($item->url) . "\n\n---\n\n";
@@ -160,8 +154,6 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
               return;
             }
 
-
-            // 4. Send to OpenAI
             $this->logger->info(sprintf('Sending Trend ID %d (%s) to OpenAI.', $trend->id, $trend->title));
             $config = $this->configFactory->get('google_trends_importer.settings');
             $prompt_template = $config->get('openai_prompt');
@@ -171,15 +163,14 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
                 throw new \Exception('OpenAI Prompt Template is empty.');
             }
 
-            // Use sprintf with the template
             $prompt = sprintf(
                 $prompt_template,
-                $trend->title, // Pass original title for context
+                $trend->title,
                 $all_scraped_text
             );
 
             $result = $this->openAiClient->chat()->create([
-                'model' => 'gpt-3.5-turbo', // Consider gpt-4 for better results if available
+                'model' => 'gpt-3.5-turbo',
                 'messages' => [
                     ['role' => 'user', 'content' => $prompt],
                 ],
@@ -187,29 +178,23 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
             $full_response = $result->choices[0]->message->content;
 
-            // *** SPLIT the response ***
             $parts = explode($separator, $full_response, 2);
 
             if (count($parts) !== 2) {
-                // Separator not found, log error and maybe use original title as fallback
                 $this->logger->error('OpenAI response for Trend ID @id did not contain the expected separator "@sep". Using original trend title.', [
                     '@id' => $trend_id,
                     '@sep' => $separator
                 ]);
-                $generated_title = $trend->title; // Fallback title
-                $article_body = trim($full_response); // Use the whole response as body
+                $generated_title = $trend->title;
+                $article_body = trim($full_response);
             } else {
                 $generated_title = trim($parts[0]);
                 $article_body = trim($parts[1]);
             }
-            // *** End splitting logic ***
 
-            // 5. Create Node using GENERATED title and body
             $this->logger->info(sprintf('Creating article for Trend ID %d with generated title: %s', $trend->id, $generated_title));
-            // Pass the generated title to createArticleNode
             $this->createArticleNode($trend, $generated_title, $article_body);
 
-            // 6. Mark as processed
             $this->database->update('google_trends_data')
                 ->fields(['processed' => 1])
                 ->condition('id', $trend_id)
@@ -226,11 +211,11 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         }
     }
 
-    // ... (scrapeUrlWithReadability remains the same) ...
-     /**
+    /**
      * Helper function to scrape text from a URL using Readability.
      */
     private function scrapeUrlWithReadability($url) {
+        // ... (this method remains the same) ...
         try {
             $response = $this->httpClient->request('GET', $url, ['timeout' => 10]);
             $html = (string) $response->getBody();
@@ -267,7 +252,6 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
     /**
      * Helper function to create the node and save the node ID.
-     * *** ADDED $generated_title parameter ***
      */
     private function createArticleNode($trend, $generated_title, $body_text) {
         $node_storage = $this->entityTypeManager->getStorage('node');
@@ -311,23 +295,35 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         }
 
 
-        // *** Use the $generated_title ***
+        // *** Convert pub_date string to timestamp ***
+        $created_timestamp = strtotime($trend->pub_date);
+        // Fallback to current time if conversion fails
+        if ($created_timestamp === FALSE) {
+            $this->logger->warning('Failed to parse pub_date "@date" for Trend ID @id. Using current time for node creation.', [
+                '@date' => $trend->pub_date,
+                '@id' => $trend->id,
+            ]);
+            $created_timestamp = \Drupal::time()->getRequestTime();
+        }
+        // *** End conversion ***
+
         $node = $node_storage->create([
             'type' => 'article',
-            'title' => $generated_title, // <-- Use generated title
+            'title' => $generated_title,
             'status' => 0,
             'body' => [
-                'value' => $body_text, // This is already the HTML body
-                'format' => 'full_html', // Ensure this format allows the HTML tags you expect
+                'value' => $body_text,
+                'format' => 'full_html',
             ],
+            // *** Set the 'created' timestamp ***
+            'created' => $created_timestamp,
         ]);
 
-        // *** Use generated title for image alt text if original is missing/generic ***
         $alt_text = !empty($generated_title) ? $generated_title : $trend->title;
         if ($file_id) {
             if ($node->hasField('field_image')) {
                 $node->field_image->target_id = $file_id;
-                $node->field_image->alt = $alt_text; // Use better alt text
+                $node->field_image->alt = $alt_text;
             } else {
                 $this->logger->warning('Node type "article" is missing the "field_image" field. Cannot attach image for Trend ID @id.', ['@id' => $trend->id]);
             }
