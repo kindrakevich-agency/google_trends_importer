@@ -271,10 +271,11 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
                    ]);
                 } elseif (!empty($file_data)) {
                     $filename = 'trend_image_' . $trend->id . '.jpg';
-                    $directory = $this->fileSystem . '/google_trends/';
+
+                    $directory = 'public://google_trends';
                     $file_system->prepareDirectory($directory, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
 
-                    $destination = $directory . $filename;
+                    $destination = $directory . '/' . $filename;
 
                     $file = $this->fileRepository->writeData($file_data, $destination, FileSystemInterface::EXISTS_REPLACE);
                     if ($file) {
