@@ -220,6 +220,8 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
             $response = $this->httpClient->request('GET', $url, ['timeout' => 10]);
             $html = (string) $response->getBody();
 
+            $html = preg_replace('//', '', $html);
+
             $config = new Configuration();
             $config->setFixRelativeURLs(true);
             $config->setOriginalURL($url);
