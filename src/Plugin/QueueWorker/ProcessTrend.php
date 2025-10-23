@@ -17,7 +17,8 @@ use fivefilters\Readability\Configuration;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Queue\SuspendQueueException;
 use Drupal\Core\File\FileSystemInterface;
-
+use DOMDocument;
+use DOMXPath;
 
 /**
  * Processes a Trend Item from the queue.
@@ -215,23 +216,61 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
      * Helper function to scrape text from a URL using Readability.
      */
     private function scrapeUrlWithReadability($url) {
-        // ... (this method remains the same) ...
         try {
             $response = $this->httpClient->request('GET', $url, ['timeout' => 10]);
             $html = (string) $response->getBody();
 
-            $html = preg_replace('//', '', $html);
+            // *** START DOMDocument Cleaning ***
+            if (!empty($html)) {
+                // Create DOMDocument object and load HTML, suppressing errors for invalid HTML
+                $dom = new DOMDocument();
+                // Use internal_errors to handle HTML5+ parsing issues gracefully
+                libxml_use_internal_errors(true);
+                // Ensure proper encoding (optional, depends on source)
+                // Prepend encoding if known, or let DOMDocument try to detect
+                $dom->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+                libxml_clear_errors();
+                libxml_use_internal_errors(false);
+
+                // Create XPath object
+                $xpath = new DOMXPath($dom);
+
+                // Find all comment nodes
+                $comments = $xpath->query('//comment()');
+
+                // Remove each comment node
+                if ($comments) {
+                   // Iterate backwards to avoid issues with node list changes
+                   for ($i = $comments->length - 1; $i >= 0; $i--) {
+                       $comment = $comments->item($i);
+                       $comment->parentNode->removeChild($comment);
+                   }
+                }
+
+                // Get the cleaned HTML string back
+                $cleaned_html = $dom->saveHTML();
+            } else {
+                $cleaned_html = '';
+            }
+             // *** END DOMDocument Cleaning ***
+
+            // Proceed only if we have some HTML left
+            if (empty($cleaned_html)){
+                $this->logger->warning('HTML was empty or became empty after cleaning for URL @url', ['@url' => $url]);
+                return '';
+            }
 
             $config = new Configuration();
             $config->setFixRelativeURLs(true);
             $config->setOriginalURL($url);
 
             $readability = new Readability($config);
-            $readability->parse($html);
+            // Parse the CLEANED HTML
+            $readability->parse($cleaned_html);
 
             $htmlContent = $readability->getContent();
             if (empty(trim(strip_tags($htmlContent)))) {
-                $this->logger->warning('Readability could not extract meaningful content for URL @url', ['@url' => $url]);
+                $this->logger->warning('Readability could not extract meaningful content for URL @url after DOM cleaning', ['@url' => $url]);
                 return '';
             }
 
@@ -239,11 +278,10 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
             $plainTextContent = html_entity_decode($plainTextContent, ENT_QUOTES | ENT_HTML5, 'UTF-8');
             $plainTextContent = preg_replace('/\s+/', ' ', trim($plainTextContent));
 
-            // Return only title and plain text content for the prompt context
             return $readability->getTitle() . "\n\n" . $plainTextContent;
 
         } catch (\Exception $e) {
-            $this->logger->warning('Failed to scrape URL @url: @message', [
+            $this->logger->warning('Failed to scrape or parse URL @url: @message', [
                 '@url' => $url,
                 '@message' => $e->getMessage(),
             ]);
