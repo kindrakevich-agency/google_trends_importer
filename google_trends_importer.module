@@ -9,9 +9,14 @@
  * Implements hook_cron().
  */
 function google_trends_importer_cron() {
-  // Get the fetcher service.
-  $fetcher = \Drupal::service('google_trends_importer.fetcher');
-  
-  // Run the import.
-  $fetcher->fetchAndSaveTrends();
+  // Get the configuration.
+  $config = \Drupal::config('google_trends_importer.settings');
+
+  // Only run if cron processing is enabled in settings.
+  if ($config->get('cron_enabled')) {
+    // Get the fetcher service.
+    $fetcher = \Drupal::service('google_trends_importer.fetcher');
+    // Run the import.
+    $fetcher->fetchAndSaveTrends();
+  }
 }

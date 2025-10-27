@@ -1,6 +1,5 @@
 openai_api_key: ''
 trends_url: 'https://trends.google.com/trending/rss?geo=US'
-# Add the default prompt using YAML multi-line syntax (|)
 openai_prompt: |
   You are an expert news editor. Your task is to generate a compelling news article title and a full HTML body based on a Google Search Trend topic and related news snippets.
 
@@ -10,7 +9,7 @@ openai_prompt: |
   %s
 
   Instructions:
-  1. Generate a short, engaging, SEO-friendly title for a news article about this topic.
+  1. Generate a short, engaging, SEO-friendly title for a news article about this topic, using both the original trend topic and the context from the provided news snippets.
   2. Generate a well-structured news article body in HTML format, synthesizing the information from the snippets. Ensure it flows logically and is easy to read. Include paragraphs (<p>), and consider using headings (<h2>, <h3>) or lists (<ul>, <ol>) if appropriate. Do not include the <html> or <body> tags, only the content that would go inside the body.
   3. Separate the generated title from the generated HTML body using exactly this separator line:
   ---TITLE_SEPARATOR---
@@ -19,3 +18,6 @@ openai_prompt: |
   Generated Title
   ---TITLE_SEPARATOR---
   <p>Generated HTML body starts here...</p>...
+cron_enabled: true
+# Add default for OpenAI model
+openai_model: 'gpt-3.5-turbo'

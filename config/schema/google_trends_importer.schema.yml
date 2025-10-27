@@ -8,7 +8,14 @@ google_trends_importer.settings:
     trends_url:
       type: string
       label: 'Google Trends RSS URL'
-    # Add the new prompt setting definition
     openai_prompt:
-      type: text # Use 'text' for potentially long prompts
+      type: text
       label: 'OpenAI Prompt Template'
+      description: 'Template for generating article title and body.'
+    cron_enabled:
+      type: boolean
+      label: 'Enable Cron Processing'
+    # Add setting for OpenAI model
+    openai_model:
+      type: string
+      label: 'OpenAI Model Name'
