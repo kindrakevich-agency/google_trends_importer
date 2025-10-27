@@ -24,8 +24,7 @@ openai_prompt: |
   Instructions:
   1. Generate a short, engaging, SEO-friendly title for a news article about this topic, using both the original trend topic and the context from the provided news snippets.
   2. Generate a well-structured news article body in HTML format, synthesizing the information from the snippets. Ensure it flows logically and is easy to read. Include paragraphs (<p>), and consider using headings (<h2>, <h3>) or lists (<ul>, <ol>) if appropriate. Do not include the <html> or <body> tags, only the content that would go inside the body.
-  3. If tags are provided below, select the most relevant ones based on the article content. Only use tags from the provided list. Return the selected tags as a comma-separated list.
-  4. Use these exact separator lines to divide your response:
+  3. Use these exact separator lines to divide your response:
      - Between title and body: ---TITLE_SEPARATOR---
      - Between body and tags: ---TAGS_SEPARATOR---
 
