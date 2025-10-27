@@ -1,7 +1,20 @@
 openai_api_key: ''
+openai_model: 'gpt-4o-mini'
 trends_url: 'https://trends.google.com/trending/rss?geo=US'
+content_type: 'article'
+image_field: 'field_image'
+tag_field: ''
+tag_vocabulary: ''
+min_traffic: null
+max_trends: 5
+cron_enabled: true
+tags_instruction: |
+
+  Available tags for categorization: %s
+
+  Based on the article content, select the most relevant tags from the list above. Only use tags from the provided list. Return the selected tags as a comma-separated list. Place the tags after a line containing exactly: ---TAGS_SEPARATOR---
 openai_prompt: |
-  You are an expert news editor. Your task is to generate a compelling news article title and a full HTML body based on a Google Search Trend topic and related news snippets.
+  You are an expert news editor. Your task is to generate a compelling news article title, a full HTML body, and relevant tags based on a Google Search Trend topic and related news snippets.
 
   The original search trend topic is: '%s'
 
@@ -11,13 +24,13 @@ openai_prompt: |
   Instructions:
   1. Generate a short, engaging, SEO-friendly title for a news article about this topic, using both the original trend topic and the context from the provided news snippets.
   2. Generate a well-structured news article body in HTML format, synthesizing the information from the snippets. Ensure it flows logically and is easy to read. Include paragraphs (<p>), and consider using headings (<h2>, <h3>) or lists (<ul>, <ol>) if appropriate. Do not include the <html> or <body> tags, only the content that would go inside the body.
-  3. Separate the generated title from the generated HTML body using exactly this separator line:
-  ---TITLE_SEPARATOR---
+  3. Use these exact separator lines to divide your response:
+     - Between title and body: ---TITLE_SEPARATOR---
+     - Between body and tags: ---TAGS_SEPARATOR---
 
   Output format:
   Generated Title
   ---TITLE_SEPARATOR---
   <p>Generated HTML body starts here...</p>...
-cron_enabled: true
-# Add default for OpenAI model
-openai_model: 'gpt-3.5-turbo'
+  ---TAGS_SEPARATOR---
+  tag1, tag2, tag3

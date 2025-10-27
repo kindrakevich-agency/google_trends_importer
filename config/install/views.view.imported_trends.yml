@@ -26,29 +26,117 @@ display:
           table: google_trends_data
           field: title
           relationship: none
-          plugin_id: field
+          plugin_id: standard
           label: 'Trend Title'
         traffic:
           id: traffic
           table: google_trends_data
           field: traffic
           relationship: none
-          plugin_id: field
-          label: Traffic
+          plugin_id: numeric
+          label: 'Traffic (K)'
+          alter:
+            alter_text: false
+          element_type: ''
+          element_class: ''
+          element_label_type: ''
+          element_label_class: ''
+          element_label_colon: true
+          element_wrapper_type: ''
+          element_wrapper_class: ''
+          empty: ''
+          hide_empty: false
+          empty_zero: false
+          hide_alter_empty: true
+          set_precision: false
+          precision: 0
+          decimal: '.'
+          separator: ','
+          format_plural: false
+          format_plural_string: "1\x03@count"
+          prefix: ''
+          suffix: 'K+'
+        pub_date:
+          id: pub_date
+          table: google_trends_data
+          field: pub_date
+          relationship: none
+          plugin_id: date
+          label: 'Published'
+          date_format: short
+        imported_at:
+          id: imported_at
+          table: google_trends_data
+          field: imported_at
+          relationship: none
+          plugin_id: date
+          label: 'Imported'
+          date_format: short
+        processing_cost:
+          id: processing_cost
+          table: google_trends_data
+          field: processing_cost
+          relationship: none
+          plugin_id: numeric
+          label: 'Cost'
+          alter:
+            alter_text: false
+          element_type: ''
+          element_class: ''
+          element_label_type: ''
+          element_label_class: ''
+          element_label_colon: true
+          element_wrapper_type: ''
+          element_wrapper_class: ''
+          empty: 'N/A'
+          hide_empty: false
+          empty_zero: true
+          hide_alter_empty: true
+          set_precision: true
+          precision: 4
+          decimal: '.'
+          separator: ','
+          format_plural: false
+          prefix: '$'
+          suffix: ''
         view_node:
           id: view_node
-          table: node
+          table: node_field_data
           field: view_node
           relationship: node_id
-          plugin_id: field
-          label: 'Generated Article'
-          text: 'View Article'
+          plugin_id: entity_link
+          label: 'Article'
+          text: 'View'
       pager:
-        type: mini
+        type: full
         options:
-          items_per_page: 10
+          items_per_page: 25
+          offset: 0
+          id: 0
+          total_pages: null
+          expose:
+            items_per_page: false
+            items_per_page_label: 'Items per page'
+            items_per_page_options: '5, 10, 25, 50'
+            items_per_page_options_all: false
+            items_per_page_options_all_label: '- All -'
+            offset: false
+            offset_label: Offset
+          tags:
+            previous: '‹ Previous'
+            next: 'Next ›'
+            first: '« First'
+            last: 'Last »'
       exposed_form:
         type: basic
+        options:
+          submit_button: Apply
+          reset_button: false
+          reset_button_label: Reset
+          exposed_sorts_label: 'Sort by'
+          expose_sort_order: true
+          sort_asc_label: Asc
+          sort_desc_label: Desc
       access:
         type: perm
         options:
@@ -56,19 +144,100 @@ display:
       cache:
         type: tag
         options: {}
-      empty: {  }
+      empty:
+        area:
+          id: area
+          table: views
+          field: area
+          relationship: none
+          plugin_id: text
+          empty: true
+          content:
+            value: 'No trends have been imported yet.'
+            format: basic_html
+          tokenize: false
       sorts:
         id:
           id: id
           table: google_trends_data
           field: id
           relationship: none
-          plugin_id: field
+          plugin_id: standard
           order: DESC
-      arguments: {  }
-      filters: {  }
+      arguments: {}
+      filters:
+        processed:
+          id: processed
+          table: google_trends_data
+          field: processed
+          relationship: none
+          plugin_id: boolean
+          value: '1'
+          group: 1
+          exposed: false
       style:
         type: table
+        options:
+          grouping: []
+          row_class: ''
+          default_row_class: true
+          columns:
+            title: title
+            traffic: traffic
+            pub_date: pub_date
+            imported_at: imported_at
+            processing_cost: processing_cost
+            view_node: view_node
+          default: imported_at
+          info:
+            title:
+              sortable: true
+              default_sort_order: asc
+              align: ''
+              separator: ''
+              empty_column: false
+              responsive: ''
+            traffic:
+              sortable: true
+              default_sort_order: desc
+              align: ''
+              separator: ''
+              empty_column: false
+              responsive: ''
+            pub_date:
+              sortable: true
+              default_sort_order: desc
+              align: ''
+              separator: ''
+              empty_column: false
+              responsive: ''
+            imported_at:
+              sortable: true
+              default_sort_order: desc
+              align: ''
+              separator: ''
+              empty_column: false
+              responsive: ''
+            processing_cost:
+              sortable: true
+              default_sort_order: desc
+              align: ''
+              separator: ''
+              empty_column: false
+              responsive: ''
+            view_node:
+              sortable: false
+              default_sort_order: asc
+              align: ''
+              separator: ''
+              empty_column: false
+              responsive: ''
+          override: true
+          sticky: false
+          summary: ''
+          empty_table: false
+          caption: ''
+          description: ''
       row:
         type: fields
       relationships:
@@ -79,12 +248,14 @@ display:
           relationship: none
           plugin_id: standard
           required: false
-      header: {  }
-      footer: {  }
+          admin_label: 'Generated Node'
+      header: {}
+      footer: {}
     cache_metadata:
       contexts:
         - 'languages:language_content'
         - 'languages:language_interface'
+        - url.query_args
         - user.permissions
       max-age: -1
       tags:
@@ -95,17 +266,22 @@ display:
     display_plugin: page
     position: 1
     display_options:
-      display_extenders: {  }
+      display_extenders: {}
       path: admin/content/imported-trends
       menu:
         type: normal
         title: 'Imported Trends'
+        description: 'View imported Google Trends and their generated articles'
         menu_name: admin
         parent: system.admin_content
+        weight: 0
+        context: '0'
+        expanded: false
     cache_metadata:
       contexts:
         - 'languages:language_content'
         - 'languages:language_interface'
+        - url.query_args
         - user.permissions
       max-age: -1
       tags:

@@ -5,17 +5,38 @@ google_trends_importer.settings:
     openai_api_key:
       type: string
       label: 'OpenAI API Key'
-    trends_url:
+    openai_model:
       type: string
-      label: 'Google Trends RSS URL'
+      label: 'OpenAI Model Name'
     openai_prompt:
       type: text
       label: 'OpenAI Prompt Template'
       description: 'Template for generating article title and body.'
+    tags_instruction:
+      type: text
+      label: 'Tags Selection Instructions'
+      description: 'Instructions for ChatGPT on how to select tags.'
+    content_type:
+      type: string
+      label: 'Content Type'
+    image_field:
+      type: string
+      label: 'Image Field Name'
+    tag_field:
+      type: string
+      label: 'Tag Field Name'
+    tag_vocabulary:
+      type: string
+      label: 'Tag Vocabulary'
+    trends_url:
+      type: string
+      label: 'Google Trends RSS URL'
+    min_traffic:
+      type: integer
+      label: 'Minimum Traffic Threshold'
+    max_trends:
+      type: integer
+      label: 'Maximum Trends to Parse at Once'
     cron_enabled:
       type: boolean
       label: 'Enable Cron Processing'
-    # Add setting for OpenAI model
-    openai_model:
-      type: string
-      label: 'OpenAI Model Name'

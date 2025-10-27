@@ -42,10 +42,10 @@ function google_trends_importer_views_data() {
 
   $data['google_trends_data']['traffic'] = [
     'title' => t('Traffic'),
-    'help' => t('Approximate search traffic.'),
-    'field' => ['id' => 'standard'],
+    'help' => t('Approximate search traffic in thousands.'),
+    'field' => ['id' => 'numeric'],
     'sort' => ['id' => 'standard'],
-    'filter' => ['id' => 'string'],
+    'filter' => ['id' => 'numeric'],
   ];
 
   $data['google_trends_data']['pub_date'] = [
@@ -102,6 +102,17 @@ function google_trends_importer_views_data() {
     'field' => ['id' => 'date'],
     'sort' => ['id' => 'date'],
     'filter' => ['id' => 'date'],
+  ];
+
+  $data['google_trends_data']['processing_cost'] = [
+    'title' => t('Processing Cost'),
+    'help' => t('Cost in USD for processing this trend with OpenAI.'),
+    'field' => [
+      'id' => 'numeric',
+      'float' => TRUE,
+    ],
+    'sort' => ['id' => 'standard'],
+    'filter' => ['id' => 'numeric'],
   ];
 
   // --- Related table: google_trends_news_items ---

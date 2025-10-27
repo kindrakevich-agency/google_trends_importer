@@ -11,7 +11,7 @@
 function google_trends_importer_schema() {
   $schema = [];
 
-  // 1. The main table for the trend item
+  // Main table for trend items
   $schema['google_trends_data'] = [
     'description' => 'Stores daily Google Trends data.',
     'fields' => [
@@ -29,11 +29,11 @@ function google_trends_importer_schema() {
         'description' => 'The search term (trend title).',
       ],
       'traffic' => [
-        'type' => 'varchar',
-        'length' => 100,
+        'type' => 'int',
+        'unsigned' => TRUE,
         'not null' => TRUE,
-        'default' => '',
-        'description' => 'Approximate traffic (e.g., "100K+ searches").',
+        'default' => 0,
+        'description' => 'Approximate traffic in thousands (e.g., 100 for 100K+ searches).',
       ],
       'pub_date' => [
         'mysql_type' => 'DATETIME',
@@ -45,7 +45,7 @@ function google_trends_importer_schema() {
         'length' => 2048,
         'not null' => TRUE,
         'default' => '',
-        'description' => 'Link to the Google Trends page (often the feed URL).', // Updated description
+        'description' => 'Link to the Google Trends page.',
       ],
       'snippet' => [
         'type' => 'text',
@@ -80,63 +80,68 @@ function google_trends_importer_schema() {
         'default' => 0,
         'description' => 'Timestamp when the item was imported.',
       ],
+      'processing_cost' => [
+        'type' => 'numeric',
+        'precision' => 10,
+        'scale' => 6,
+        'not null' => FALSE,
+        'description' => 'Cost in USD for processing this trend with OpenAI.',
+      ],
     ],
     'primary key' => ['id'],
     'unique keys' => [
-      // *** UPDATED UNIQUE KEY ***
-      // Use 'title' and 'pub_date' to determine uniqueness
       'title_date' => ['title', 'pub_date'],
     ],
     'indexes' => [
       'processed' => ['processed'],
-      // Add an index on title for faster lookups if needed
       'title' => ['title'],
+      'traffic' => ['traffic'],
     ],
   ];
 
-  // 2. The table for the related news items (remains the same)
+  // Table for related news items
   $schema['google_trends_news_items'] = [
     'description' => 'Stores related news items for each Google Trend.',
-    'fields' => [ /* ... fields ... */
-        'id' => [
+    'fields' => [
+      'id' => [
         'type' => 'serial',
         'unsigned' => TRUE,
         'not null' => TRUE,
         'description' => 'Primary Key: Unique news item ID.',
-        ],
-        'trend_id' => [
+      ],
+      'trend_id' => [
         'type' => 'int',
         'unsigned' => TRUE,
         'not null' => TRUE,
         'description' => 'Foreign key linking to google_trends_data.id.',
-        ],
-        'title' => [
+      ],
+      'title' => [
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
         'default' => '',
         'description' => 'The news item title.',
-        ],
-        'snippet' => [
+      ],
+      'snippet' => [
         'type' => 'text',
         'size' => 'normal',
         'not null' => FALSE,
         'description' => 'The news item snippet.',
-        ],
-        'url' => [
+      ],
+      'url' => [
         'type' => 'varchar',
         'length' => 2048,
         'not null' => TRUE,
         'default' => '',
         'description' => 'The news item URL.',
-        ],
-        'source' => [
+      ],
+      'source' => [
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
         'default' => '',
         'description' => 'The news item source (e.g., "New York Times").',
-        ],
+      ],
     ],
     'primary key' => ['id'],
     'indexes' => [
@@ -151,4 +156,78 @@ function google_trends_importer_schema() {
   ];
 
   return $schema;
+}
+
+/**
+ * Update traffic field from varchar to int and add processing_cost field.
+ */
+function google_trends_importer_update_9001() {
+  $database = \Drupal::database();
+  $schema = $database->schema();
+  
+  // Check if traffic is already an integer (fresh install)
+  if ($schema->fieldExists('google_trends_data', 'traffic')) {
+    $table_info = $database->query("DESCRIBE {google_trends_data} traffic")->fetch();
+    
+    // Only update if it's currently varchar/text
+    if (strpos(strtolower($table_info->Type), 'int') === FALSE) {
+      // Add temporary column
+      $schema->addField('google_trends_data', 'traffic_int', [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'description' => 'Temporary column for traffic conversion.',
+      ]);
+      
+      // Convert existing data - extract numbers and handle K/M/B multipliers
+      $database->query("
+        UPDATE {google_trends_data} 
+        SET traffic_int = CASE
+          WHEN traffic LIKE '%M%' THEN CAST(REGEXP_REPLACE(traffic, '[^0-9.]', '') AS DECIMAL(10,2)) * 1000
+          WHEN traffic LIKE '%B%' THEN CAST(REGEXP_REPLACE(traffic, '[^0-9.]', '') AS DECIMAL(10,2)) * 1000000
+          ELSE CAST(REGEXP_REPLACE(traffic, '[^0-9.]', '') AS UNSIGNED)
+        END
+        WHERE traffic != ''
+      ");
+      
+      // Drop old column
+      $schema->dropField('google_trends_data', 'traffic');
+      
+      // Rename new column
+      $schema->changeField('google_trends_data', 'traffic_int', 'traffic', [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Approximate traffic in thousands (e.g., 100 for 100K+ searches).',
+      ]);
+      
+      // Add index on traffic
+      if (!$schema->indexExists('google_trends_data', 'traffic')) {
+        $schema->addIndex('google_trends_data', 'traffic', ['traffic'], [
+          'fields' => [
+            'traffic' => [
+              'type' => 'int',
+              'unsigned' => TRUE,
+              'not null' => TRUE,
+              'default' => 0,
+            ],
+          ],
+        ]);
+      }
+    }
+  }
+  
+  // Add processing_cost field if it doesn't exist
+  if (!$schema->fieldExists('google_trends_data', 'processing_cost')) {
+    $schema->addField('google_trends_data', 'processing_cost', [
+      'type' => 'numeric',
+      'precision' => 10,
+      'scale' => 6,
+      'not null' => FALSE,
+      'description' => 'Cost in USD for processing this trend with OpenAI.',
+    ]);
+  }
+  
+  return t('Updated traffic field to integer and added processing_cost field.');
 }
