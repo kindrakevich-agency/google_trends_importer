@@ -171,6 +171,18 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
       // Build the prompt with trend title, content, and tags
       $prompt = sprintf($prompt_template, $trend->title, $all_scraped_text, $tags_list);
+      
+      // Log the full prompt to dblog for review
+      $this->logger->info('Sending prompt to OpenAI for Trend ID @id (@title). Full prompt logged below:', [
+        '@id' => $trend->id,
+        '@title' => $trend->title,
+      ]);
+      
+      // Log full prompt in a separate entry for better readability
+      $this->logger->debug('Full OpenAI Prompt for Trend ID @id:<br><pre>@prompt</pre>', [
+        '@id' => $trend->id,
+        '@prompt' => $prompt,
+      ]);
 
       $start_time = microtime(true);
       
@@ -185,6 +197,12 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       $processing_cost = $this->calculateCost($result, $model_name);
 
       $full_response = $result->choices[0]->message->content;
+      
+      // Log the full AI response
+      $this->logger->debug('Full OpenAI Response for Trend ID @id:<br><pre>@response</pre>', [
+        '@id' => $trend->id,
+        '@response' => $full_response,
+      ]);
 
       // Parse response for title, body, and tags
       $parsed = $this->parseResponse($full_response, $separator, $tags_separator, $trend->title);

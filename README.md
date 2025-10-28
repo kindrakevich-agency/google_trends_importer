@@ -131,6 +131,38 @@ Must include separators: `---TITLE_SEPARATOR---` and `---TAGS_SEPARATOR---`
 
 Shows: Title, Traffic (K), Published, Imported, Cost, Article link
 
+### Review AI Prompts and Responses
+
+The module logs all prompts sent to OpenAI and responses received. This helps you:
+- Verify what's being sent to the AI
+- Debug issues with generated content
+- Refine your prompt template
+- Audit AI interactions
+
+**View logs:**
+1. Go to `/admin/reports/dblog`
+2. Filter by "google_trends_importer"
+3. Look for entries marked "Debug" - these contain full prompts/responses
+4. Click "View" on any entry to see the complete prompt or response
+
+**Via Drush:**
+```bash
+# View recent logs
+drush watchdog:show --type=google_trends_importer
+
+# View only debug logs (prompts/responses)
+drush watchdog:show --type=google_trends_importer --severity=Debug
+
+# Search for specific trend
+drush watchdog:show --type=google_trends_importer | grep "Trend ID 123"
+```
+
+**Log entries include:**
+- **Info**: "Sending prompt to OpenAI for Trend ID X"
+- **Debug**: Full prompt with all content, tags, and instructions
+- **Debug**: Full AI response with title, body, and selected tags
+- **Info**: Processing results (success, cost, node created)
+
 ### Monitor Costs
 
 ```bash
