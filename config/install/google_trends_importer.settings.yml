@@ -8,11 +8,6 @@ tag_vocabulary: ''
 min_traffic: null
 max_trends: 5
 cron_enabled: true
-tags_instruction: |
-
-  Available tags for categorization: %s
-
-  Based on the article content, select the most relevant tags from the list above. Only use tags from the provided list. Return the selected tags as a comma-separated list. Place the tags after a line containing exactly: ---TAGS_SEPARATOR---
 openai_prompt: |
   You are an expert news editor. Your task is to generate a compelling news article title, a full HTML body, and relevant tags based on a Google Search Trend topic and related news snippets.
 
@@ -21,10 +16,13 @@ openai_prompt: |
   Here are snippets from related news articles:
   %s
 
+  Available tags for categorization: %s
+
   Instructions:
   1. Generate a short, engaging, SEO-friendly title for a news article about this topic, using both the original trend topic and the context from the provided news snippets.
   2. Generate a well-structured news article body in HTML format, synthesizing the information from the snippets. Ensure it flows logically and is easy to read. Include paragraphs (<p>), and consider using headings (<h2>, <h3>) or lists (<ul>, <ol>) if appropriate. Do not include the <html> or <body> tags, only the content that would go inside the body.
-  3. Use these exact separator lines to divide your response:
+  3. Based on the article content and the available tags list above, select the 3-5 most relevant tags. Only use tags from the provided list. Return the selected tags as a comma-separated list.
+  4. Use these exact separator lines to divide your response:
      - Between title and body: ---TITLE_SEPARATOR---
      - Between body and tags: ---TAGS_SEPARATOR---
 

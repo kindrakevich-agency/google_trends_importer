@@ -157,6 +157,7 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       // Get available tags from vocabulary
       $config = $this->configFactory->get('google_trends_importer.settings');
       $available_tags = $this->getAvailableTags($config);
+      $tags_list = !empty($available_tags) ? implode(', ', $available_tags) : 'No tags available';
 
       $this->logger->info(sprintf('Sending Trend ID %d (%s) to OpenAI.', $trend->id, $trend->title));
       
@@ -168,8 +169,8 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         throw new \Exception('OpenAI Prompt Template is empty.');
       }
 
-      // Build the prompt with tags if available
-      $prompt = $this->buildPrompt($prompt_template, $trend->title, $all_scraped_text, $available_tags);
+      // Build the prompt with trend title, content, and tags
+      $prompt = sprintf($prompt_template, $trend->title, $all_scraped_text, $tags_list);
 
       $start_time = microtime(true);
       

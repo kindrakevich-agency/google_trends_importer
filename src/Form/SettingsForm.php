@@ -82,6 +82,8 @@ class SettingsForm extends ConfigFormBase {
       '#options' => [
         'gpt-4o' => 'GPT-4o (Most capable, higher cost)',
         'gpt-4o-mini' => 'GPT-4o Mini (Balanced performance and cost)',
+        'o1-preview' => 'O1 Preview (Advanced reasoning, highest cost)',
+        'o1-mini' => 'O1 Mini (Fast reasoning, moderate cost)',
         'gpt-4-turbo' => 'GPT-4 Turbo (Previous generation, powerful)',
         'gpt-4' => 'GPT-4 (Legacy, slower)',
         'gpt-3.5-turbo' => 'GPT-3.5 Turbo (Fastest, lowest cost)',
@@ -93,18 +95,10 @@ class SettingsForm extends ConfigFormBase {
     $form['openai_settings']['openai_prompt'] = [
       '#type' => 'textarea',
       '#title' => $this->t('OpenAI Prompt Template'),
-      '#description' => $this->t('Template for generating article title and body. Use %s for placeholders. Include instructions for the AI to separate title and body with "---TITLE_SEPARATOR---" and tags with "---TAGS_SEPARATOR---".'),
-      '#rows' => 20,
+      '#description' => $this->t('Template for generating article title, body, and selecting tags. Use %s for placeholders: 1) trend title, 2) news content, 3) available tags (when vocabulary is selected). Include separators: ---TITLE_SEPARATOR--- (between title and body) and ---TAGS_SEPARATOR--- (between body and tags).'),
+      '#rows' => 25,
       '#default_value' => $config->get('openai_prompt'),
       '#required' => TRUE,
-    ];
-
-    $form['openai_settings']['tags_instruction'] = [
-      '#type' => 'textarea',
-      '#title' => $this->t('Tags Selection Instructions'),
-      '#description' => $this->t('Instructions for ChatGPT on how to select tags. This will be appended to the main prompt when a vocabulary is selected. Use %s as a placeholder for the comma-separated list of available tags.'),
-      '#rows' => 8,
-      '#default_value' => $config->get('tags_instruction') ?: "\n\nAvailable tags for categorization: %s\n\nBased on the article content, select the most relevant tags from the list above. Only use tags from the provided list. Return the selected tags as a comma-separated list. Place the tags after a line containing exactly: ---TAGS_SEPARATOR---",
     ];
 
     // Content Type Settings
@@ -300,7 +294,6 @@ class SettingsForm extends ConfigFormBase {
       ->set('openai_api_key', $form_state->getValue('openai_api_key'))
       ->set('openai_model', $form_state->getValue('openai_model'))
       ->set('openai_prompt', $form_state->getValue('openai_prompt'))
-      ->set('tags_instruction', $form_state->getValue('tags_instruction'))
       ->set('content_type', $form_state->getValue('content_type'))
       ->set('image_field', $form_state->getValue('image_field'))
       ->set('tag_field', $form_state->getValue('tag_field'))

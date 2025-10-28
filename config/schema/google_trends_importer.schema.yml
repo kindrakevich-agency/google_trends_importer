@@ -11,11 +11,7 @@ google_trends_importer.settings:
     openai_prompt:
       type: text
       label: 'OpenAI Prompt Template'
-      description: 'Template for generating article title and body.'
-    tags_instruction:
-      type: text
-      label: 'Tags Selection Instructions'
-      description: 'Instructions for ChatGPT on how to select tags.'
+      description: 'Template for generating article title, body, and tags.'
     content_type:
       type: string
       label: 'Content Type'
