@@ -2,13 +2,31 @@
 
 ## Overview
 
-Automatically fetches daily Google Trends, scrapes related news articles, uses OpenAI to generate high-quality content with AI-powered auto-tagging, and publishes articles to your Drupal site. Features cost tracking, traffic filtering, flexible content types, and queue-based processing for reliability.
+Automatically fetches daily Google Trends, scrapes related news articles with images and videos, uses OpenAI to generate high-quality content with AI-powered auto-tagging, and publishes articles to your Drupal site. Features intelligent media extraction, video embedding, cost tracking, traffic filtering, and queue-based processing for reliability.
+
+## Features
+
+* **Flexible Content Type Support** - Works with any content type
+* **AI-Powered Auto-Tagging** - ChatGPT selects relevant tags from your vocabulary
+* **Intelligent Image Extraction** - Downloads images from article bodies, sorted by resolution
+* **Video Embedding** - Extracts YouTube/Vimeo videos with automatic thumbnail generation
+* **Smart File Naming** - Images named using article slugs (e.g., `article-slug.jpg`, `article-slug-1.jpg`)
+* **Cost Tracking** - Tracks OpenAI API costs per article
+* **Traffic Filtering** - Only process trends above minimum threshold
+* **Rate Limiting** - Control trends processed per cron run
+* **Model Selection** - Choose from GPT-5, GPT-4o, O1, and more
+* **Queue-Based Processing** - Reliable background processing
+* **Content Scraping** - Uses Readability algorithm for clean content
+* **Full Logging** - Debug prompts and responses in dblog
 
 ## Requirements
 
 * Drupal 10 or 11
 * PHP 8.1 or higher (PHP 8.3+ recommended)
-* A content type with an image field and optional taxonomy reference field
+* A content type with:
+  - Image field (for article images and video thumbnails)
+  - Optional: Video embed field (video_embed_field module)
+  - Optional: Taxonomy reference field for tags
 * A taxonomy vocabulary for auto-tagging (recommended)
 * Valid **OpenAI API Key** from https://platform.openai.com/api-keys
 * Composer for dependency management
@@ -24,6 +42,10 @@ composer require openai-php/client:"^0.3.1"
 composer require symfony/dom-crawler:"^6.4 || ^7.0"
 composer require symfony/css-selector:"^6.4 || ^7.0"
 composer require fivefilters/readability.php:"^3.0"
+
+# Optional: For video embedding
+composer require drupal/video_embed_field
+drush en video_embed_field -y
 ```
 
 ### 2. Enable Module
@@ -74,6 +96,7 @@ Go to: `/admin/config/system/google-trends-importer`
 **API Key** (required): Get from https://platform.openai.com/api-keys
 
 **Model** (required):
+* **GPT-5** - Next generation, highest capability (~$0.10-0.30/article) 🆕
 * **GPT-4o Mini** - Best balance (~$0.003-0.01/article) ⭐ Recommended
 * GPT-4o - Highest quality (~$0.05-0.15/article)
 * O1 Mini - Fast reasoning (~$0.06-0.18/article)
@@ -91,8 +114,18 @@ Must include separators: `---TITLE_SEPARATOR---` and `---TAGS_SEPARATOR---`
 ### Content Type Settings
 
 * **Content Type**: Which type to create (default: Article)
-* **Image Field**: Where to attach images (AJAX updates on content type change)
+* **Image Field**: Where to attach images from articles and video thumbnails (AJAX updates on content type change)
+* **Video Field**: Video embed field for YouTube/Vimeo videos (requires video_embed_field module) 🆕
 * **Tag Field**: Taxonomy field for auto-tagging (AJAX updates)
+
+**Media Processing:**
+- Automatically extracts images from article bodies
+- Downloads images and names them using article slug (e.g., `slug.jpg`, `slug-1.jpg`, `slug-2.jpg`)
+- Sorts images by resolution (largest first)
+- Extracts YouTube/Vimeo video iframes
+- Downloads maximum resolution video thumbnails
+- Video thumbnail placed as first image
+- Supports up to 10 images per article
 
 ### Taxonomy Settings
 
@@ -116,11 +149,16 @@ Must include separators: `---TITLE_SEPARATOR---` and `---TAGS_SEPARATOR---`
 
 **Step 2: Queue Worker** (background)
 - Scrapes article content using Readability
+- **Extracts images from article HTML bodies** 🆕
+- **Sorts images by resolution (largest first)** 🆕
+- **Extracts YouTube/Vimeo video embeds** 🆕
+- **Downloads video thumbnails (max resolution)** 🆕
 - Loads vocabulary tags
 - Sends to OpenAI with complete prompt
 - Calculates and stores cost
 - Parses response (title, body, tags)
-- Downloads image
+- **Downloads and attaches all images with slug-based naming** 🆕
+- **Attaches video embed if found** 🆕
 - Creates/finds taxonomy terms
 - Creates published article node with all fields
 
@@ -187,6 +225,7 @@ drush queue:run google_trends_processor
 | Model | Per Article | 120/day | 240/day |
 |-------|-------------|---------|---------|
 | GPT-4o Mini | $0.003-0.01 | $0.36-1.20 | $0.72-2.40 |
+| GPT-5 | $0.10-0.30 | $12-36 | $24-72 |
 | O1 Mini | $0.06-0.18 | $7.20-21.60 | $14.40-43.20 |
 | GPT-4o | $0.05-0.15 | $6-18 | $12-36 |
 | O1 Preview | $0.30-0.90 | $36-108 | $72-216 |
@@ -275,13 +314,20 @@ Separators:
 
 ### 2.0.0
 * AI-powered auto-tagging with vocabulary selection
+* **Intelligent image extraction from article bodies** 🆕
+* **Video embedding support (YouTube/Vimeo)** 🆕
+* **Automatic video thumbnail download** 🆕
+* **Slug-based file naming** 🆕
+* **Image sorting by resolution** 🆕
+* **GPT-5 model support** 🆕
 * Cost tracking per article
 * Traffic filtering (int field, min threshold)
 * Max trends limit per run
 * O1 Preview and O1 Mini model support
 * Flexible content type configuration
 * Unified prompt template
-* Fixed Views with all fields
+* Fixed Views with proper date handling
+* Full prompt/response logging
 * Comprehensive documentation
 
 ### 1.0.0
@@ -299,4 +345,4 @@ GPL-2.0-or-later
 
 ---
 
-**Quick Start:** Enable module → Add API key → Select model → Configure vocabulary → Save → Click "Fetch Now" → Check `/admin/content/imported-trends`
+**Quick Start:** Enable module → Install video_embed_field (optional) → Add API key → Select model → Configure image/video/tag fields → Configure vocabulary → Save → Click "Fetch Now" → Check `/admin/content/imported-trends` → Review articles with images and videos!

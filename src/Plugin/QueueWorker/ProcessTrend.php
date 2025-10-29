@@ -30,6 +30,27 @@ use DOMXPath;
  */
 class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInterface {
 
+  /**
+   * OpenAI models with pricing per 1M tokens.
+   */
+  const OPENAI_MODELS = [
+    'gpt-5' => ['input' => 5.00, 'output' => 15.00, 'label' => 'GPT-5 (Next generation, highest capability)'],
+    'gpt-4o' => ['input' => 2.50, 'output' => 10.00, 'label' => 'GPT-4o (Most capable, higher cost)'],
+    'gpt-4o-mini' => ['input' => 0.150, 'output' => 0.600, 'label' => 'GPT-4o Mini (Balanced performance and cost)'],
+    'o1-preview' => ['input' => 15.00, 'output' => 60.00, 'label' => 'O1 Preview (Advanced reasoning, highest cost)'],
+    'o1-mini' => ['input' => 3.00, 'output' => 12.00, 'label' => 'O1 Mini (Fast reasoning, moderate cost)'],
+    'o1' => ['input' => 15.00, 'output' => 60.00, 'label' => 'O1 (Advanced reasoning)'],
+    'gpt-4-turbo' => ['input' => 10.00, 'output' => 30.00, 'label' => 'GPT-4 Turbo (Previous generation, powerful)'],
+    'gpt-4-turbo-preview' => ['input' => 10.00, 'output' => 30.00, 'label' => 'GPT-4 Turbo Preview'],
+    'gpt-4-0125-preview' => ['input' => 10.00, 'output' => 30.00, 'label' => 'GPT-4 0125 Preview'],
+    'gpt-4-1106-preview' => ['input' => 10.00, 'output' => 30.00, 'label' => 'GPT-4 1106 Preview'],
+    'gpt-4' => ['input' => 30.00, 'output' => 60.00, 'label' => 'GPT-4 (Legacy, slower)'],
+    'gpt-4-0613' => ['input' => 30.00, 'output' => 60.00, 'label' => 'GPT-4 0613'],
+    'gpt-3.5-turbo' => ['input' => 0.50, 'output' => 1.50, 'label' => 'GPT-3.5 Turbo (Fastest, lowest cost)'],
+    'gpt-3.5-turbo-0125' => ['input' => 0.50, 'output' => 1.50, 'label' => 'GPT-3.5 Turbo 0125'],
+    'gpt-3.5-turbo-1106' => ['input' => 1.00, 'output' => 2.00, 'label' => 'GPT-3.5 Turbo 1106'],
+  ];
+
   protected $database;
   protected $openAiClient;
   protected $httpClient;
@@ -209,7 +230,15 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
       $this->logger->info(sprintf('Creating article for Trend ID %d with generated title: %s', $trend->id, $parsed['title']));
       
-      $node_id = $this->createArticleNode($trend, $parsed['title'], $parsed['body'], $parsed['tags'], $config);
+      // Extract images and videos from article URLs
+      $media = $this->extractMediaFromArticles($news_items);
+      $this->logger->info('Extracted @images images and @video video for Trend ID @id', [
+        '@images' => count($media['images']),
+        '@video' => $media['video'] ? '1' : '0',
+        '@id' => $trend->id,
+      ]);
+      
+      $node_id = $this->createArticleNode($trend, $parsed['title'], $parsed['body'], $parsed['tags'], $config, $media);
 
       // Update trend record with processing info
       $this->database->update('google_trends_data')
@@ -262,27 +291,6 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
   }
 
   /**
-   * Build the prompt with tags if available.
-   */
-  protected function buildPrompt($template, $title, $content, $tags) {
-    $tags_instruction = '';
-    
-    if (!empty($tags)) {
-      $tags_list = implode(', ', $tags);
-      $tags_instruction_template = $this->configFactory->get('google_trends_importer.settings')->get('tags_instruction');
-      
-      if (!empty($tags_instruction_template)) {
-        $tags_instruction = sprintf($tags_instruction_template, $tags_list);
-      }
-    }
-
-    // Add tags instruction to the template
-    $enhanced_template = $template . $tags_instruction;
-    
-    return sprintf($enhanced_template, $title, $content);
-  }
-
-  /**
    * Parse the OpenAI response.
    */
   protected function parseResponse($full_response, $separator, $tags_separator, $fallback_title) {
@@ -324,26 +332,252 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
    * Calculate the cost of the OpenAI API call.
    */
   protected function calculateCost($result, $model_name) {
-    // Pricing per 1M tokens (as of 2024)
-    $pricing = [
-      'gpt-4o' => ['input' => 2.50, 'output' => 10.00],
-      'gpt-4o-mini' => ['input' => 0.150, 'output' => 0.600],
-      'gpt-4-turbo' => ['input' => 10.00, 'output' => 30.00],
-      'gpt-4' => ['input' => 30.00, 'output' => 60.00],
-      'gpt-3.5-turbo' => ['input' => 0.50, 'output' => 1.50],
-    ];
-
-    if (!isset($pricing[$model_name])) {
+    if (!isset(self::OPENAI_MODELS[$model_name])) {
+      $this->logger->warning('Unknown model @model for cost calculation', ['@model' => $model_name]);
       return 0;
     }
 
+    $pricing = self::OPENAI_MODELS[$model_name];
     $input_tokens = $result->usage->promptTokens ?? 0;
     $output_tokens = $result->usage->completionTokens ?? 0;
 
-    $input_cost = ($input_tokens / 1000000) * $pricing[$model_name]['input'];
-    $output_cost = ($output_tokens / 1000000) * $pricing[$model_name]['output'];
+    $input_cost = ($input_tokens / 1000000) * $pricing['input'];
+    $output_cost = ($output_tokens / 1000000) * $pricing['output'];
 
     return $input_cost + $output_cost;
+  }
+
+  /**
+   * Get available OpenAI models for settings form.
+   *
+   * @return array
+   *   Array of model_id => label.
+   */
+  public static function getAvailableModels() {
+    $models = [];
+    foreach (self::OPENAI_MODELS as $model_id => $model_data) {
+      $models[$model_id] = $model_data['label'];
+    }
+    return $models;
+  }
+
+  /**
+   * Extract images and videos from scraped HTML content using Readability.
+   *
+   * @param array $news_items
+   *   Array of news items with URLs.
+   *
+   * @return array
+   *   Array with 'images' and 'video' keys.
+   */
+  protected function extractMediaFromArticles($news_items) {
+    $all_images = [];
+    $video_url = null;
+
+    foreach ($news_items as $item) {
+      try {
+        $response = $this->httpClient->request('GET', $item->url, [
+          'timeout' => 15,
+          'headers' => [
+            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          ]
+        ]);
+        $html = (string) $response->getBody();
+
+        if (empty($html)) {
+          continue;
+        }
+
+        // Use Readability to extract images
+        $config = new Configuration();
+        $config->setFixRelativeURLs(true);
+        $config->setOriginalURL($item->url);
+
+        $readability = new Readability($config);
+        
+        // Suppress HTML5 parsing warnings
+        libxml_use_internal_errors(true);
+        $readability->parse($html);
+        libxml_clear_errors();
+        libxml_use_internal_errors(false);
+        
+        // Get images from Readability
+        $readabilityImages = $readability->getImages();
+        
+        if (!empty($readabilityImages)) {
+          foreach ($readabilityImages as $img_url) {
+            // Readability returns absolute URLs
+            $all_images[] = [
+              'url' => $img_url,
+              'width' => 0,
+              'height' => 0,
+              'alt' => '',
+            ];
+          }
+        }
+
+        // Extract video (YouTube/Vimeo iframes) - only first one
+        if (!$video_url) {
+          $dom = new DOMDocument();
+          libxml_use_internal_errors(true);
+          $dom->loadHTML('<meta http-equiv="Content-Type" content="text/html; charset=utf-8">' . $html);
+          libxml_clear_errors();
+          libxml_use_internal_errors(false);
+          
+          $xpath = new DOMXPath($dom);
+          $iframe_nodes = $xpath->query('//iframe[contains(@src, "youtube.com") or contains(@src, "youtu.be") or contains(@src, "vimeo.com")]');
+          if ($iframe_nodes->length > 0) {
+            $video_url = $iframe_nodes->item(0)->getAttribute('src');
+            
+            // Clean up embed URL
+            if (strpos($video_url, '//') === 0) {
+              $video_url = 'https:' . $video_url;
+            }
+          }
+        }
+
+      } catch (\Exception $e) {
+        $this->logger->warning('Failed to extract media from URL @url: @message', [
+          '@url' => $item->url,
+          '@message' => $e->getMessage(),
+        ]);
+      }
+    }
+
+    // Remove duplicates
+    $unique_images = [];
+    $seen_urls = [];
+    foreach ($all_images as $img) {
+      if (!in_array($img['url'], $seen_urls)) {
+        $unique_images[] = $img;
+        $seen_urls[] = $img['url'];
+      }
+    }
+
+    // Try to get image dimensions for better sorting
+    foreach ($unique_images as &$img) {
+      if ($img['width'] == 0 || $img['height'] == 0) {
+        // Try to get dimensions from actual image
+        try {
+          $size = @getimagesize($img['url']);
+          if ($size !== FALSE) {
+            $img['width'] = $size[0];
+            $img['height'] = $size[1];
+          }
+        } catch (\Exception $e) {
+          // Ignore, keep 0x0
+        }
+      }
+    }
+
+    // Sort by resolution (largest first)
+    usort($unique_images, function($a, $b) {
+      $area_a = $a['width'] * $a['height'];
+      $area_b = $b['width'] * $b['height'];
+      
+      if ($area_a == 0 && $area_b == 0) {
+        return 0;
+      }
+      if ($area_a == 0) {
+        return 1;
+      }
+      if ($area_b == 0) {
+        return -1;
+      }
+      
+      return $area_b - $area_a; // Descending order
+    });
+
+    return [
+      'images' => $unique_images,
+      'video' => $video_url,
+    ];
+  }
+
+  /**
+   * Get video thumbnail URL from YouTube or Vimeo.
+   *
+   * @param string $video_url
+   *   The video embed URL.
+   *
+   * @return string|null
+   *   Thumbnail URL or null.
+   */
+  protected function getVideoThumbnail($video_url) {
+    if (empty($video_url)) {
+      return null;
+    }
+
+    // YouTube
+    if (preg_match('/youtube\.com\/embed\/([^?&]+)/', $video_url, $matches)) {
+      $video_id = $matches[1];
+      // Try maxresdefault first (1280x720), fallback to hqdefault (480x360)
+      $maxres_url = "https://img.youtube.com/vi/{$video_id}/maxresdefault.jpg";
+      $hq_url = "https://img.youtube.com/vi/{$video_id}/hqdefault.jpg";
+      
+      // Check if maxres exists
+      try {
+        $response = $this->httpClient->request('HEAD', $maxres_url, ['timeout' => 5]);
+        if ($response->getStatusCode() === 200) {
+          return $maxres_url;
+        }
+      } catch (\Exception $e) {
+        // Fallback to hq
+      }
+      
+      return $hq_url;
+    }
+    
+    // YouTube short URL
+    if (preg_match('/youtu\.be\/([^?&]+)/', $video_url, $matches)) {
+      $video_id = $matches[1];
+      return "https://img.youtube.com/vi/{$video_id}/maxresdefault.jpg";
+    }
+
+    // Vimeo
+    if (preg_match('/vimeo\.com\/video\/(\d+)/', $video_url, $matches)) {
+      $video_id = $matches[1];
+      try {
+        $api_url = "https://vimeo.com/api/v2/video/{$video_id}.json";
+        $response = $this->httpClient->request('GET', $api_url, ['timeout' => 10]);
+        $data = json_decode((string) $response->getBody(), TRUE);
+        if (isset($data[0]['thumbnail_large'])) {
+          return $data[0]['thumbnail_large'];
+        }
+      } catch (\Exception $e) {
+        $this->logger->warning('Failed to get Vimeo thumbnail: @message', ['@message' => $e->getMessage()]);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Generate slug from title.
+   *
+   * @param string $title
+   *   The title to slugify.
+   *
+   * @return string
+   *   The slug.
+   */
+  protected function generateSlug($title) {
+    // Transliterate first (handles Cyrillic, special chars, etc.)
+    $transliterated = \Drupal::transliteration()->transliterate($title, 'en');
+    
+    // Convert to lowercase
+    $slug = strtolower($transliterated);
+    
+    // Replace spaces and special characters with hyphens
+    $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
+    
+    // Remove leading/trailing hyphens
+    $slug = trim($slug, '-');
+    
+    // Limit length
+    $slug = substr($slug, 0, 100);
+    
+    return $slug;
   }
 
   /**
@@ -364,58 +598,19 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         return '';
       }
 
-      $cleaned_html = '';
-      $dom = new DOMDocument();
-      libxml_use_internal_errors(true);
-
-      $load_success = $dom->loadHTML('<meta http-equiv="Content-Type" content="text/html; charset=utf-8">' . $html);
-      $errors = libxml_get_errors();
-      libxml_clear_errors();
-      libxml_use_internal_errors(false);
-
-      if (!$load_success || !empty($errors)) {
-        $error_messages = [];
-        foreach ($errors as $error) {
-          $error_messages[] = trim($error->message) . ' (Line: ' . $error->line . ')';
-        }
-        $this->logger->warning('DOMDocument encountered HTML parsing errors for URL @url: @errors', [
-          '@url' => $url,
-          '@errors' => implode('; ', $error_messages)
-        ]);
-        
-        if (!$load_success) {
-          $this->logger->error('DOMDocument completely failed to load HTML for URL @url. Cannot clean.', ['@url' => $url]);
-          $cleaned_html = $html;
-        }
-      }
-
-      if ($load_success) {
-        $xpath = new DOMXPath($dom);
-        $comments = $xpath->query('//comment()');
-        if ($comments) {
-          for ($i = $comments->length - 1; $i >= 0; $i--) {
-            $comment = $comments->item($i);
-            if ($comment->parentNode) {
-              $comment->parentNode->removeChild($comment);
-            }
-          }
-        }
-        $cleaned_html = $dom->saveHTML();
-      } else {
-        $cleaned_html = $html;
-      }
-
-      if (empty(trim($cleaned_html))) {
-        $this->logger->warning('HTML became empty after cleaning for URL @url', ['@url' => $url]);
-        return '';
-      }
-
+      // Use Readability directly without pre-cleaning
       $config = new Configuration();
       $config->setFixRelativeURLs(true);
       $config->setOriginalURL($url);
 
       $readability = new Readability($config);
-      $readability->parse($cleaned_html);
+      
+      // Parse HTML - Readability handles cleaning internally
+      // Suppress libxml errors as they're mostly about HTML5 tags
+      libxml_use_internal_errors(true);
+      $readability->parse($html);
+      libxml_clear_errors();
+      libxml_use_internal_errors(false);
 
       $htmlContent = $readability->getContent();
       if (empty(trim(strip_tags($htmlContent))) && strlen($htmlContent) < 100) {
@@ -434,14 +629,7 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
       $title = $readability->getTitle();
       if (empty($title)) {
-        $this->logger->info('Readability did not find a title for URL @url', ['@url' => $url]);
-        if ($load_success) {
-          $titleNodes = $xpath->query('//title');
-          if ($titleNodes && $titleNodes->length > 0) {
-            $title = trim($titleNodes->item(0)->nodeValue);
-          }
-        }
-        if (empty($title)) $title = 'Untitled Article';
+        $title = 'Untitled Article';
       }
 
       return $title . "\n\n" . $plainTextContent;
@@ -464,48 +652,127 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
   }
 
   /**
-   * Helper function to create the node and attach tags.
+   * Helper function to create the node and attach tags, images, and video.
    */
-  private function createArticleNode($trend, $generated_title, $body_text, $tags, $config) {
+  private function createArticleNode($trend, $generated_title, $body_text, $tags, $config, $media) {
     $content_type = $config->get('content_type') ?: 'article';
     $image_field = $config->get('image_field') ?: 'field_image';
+    $video_field = $config->get('video_field');
     $tag_field = $config->get('tag_field');
     
     $node_storage = $this->entityTypeManager->getStorage('node');
     $file_system = \Drupal::service('file_system');
+    
+    // Generate slug for filenames
+    $slug = $this->generateSlug($generated_title);
 
-    // Handle image
-    $file_id = NULL;
-    if (!empty($trend->image_url)) {
+    $file_ids = [];
+    
+    // Download images from articles
+    if (!empty($media['images']) && !empty($image_field)) {
+      $directory = 'public://google_trends';
+      $file_system->prepareDirectory($directory, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
+      
+      $image_index = 0;
+      foreach ($media['images'] as $image_data) {
+        try {
+          $image_content = @file_get_contents($image_data['url']);
+          if ($image_content === FALSE || empty($image_content)) {
+            continue;
+          }
+          
+          // Determine file extension
+          $extension = 'jpg';
+          if (preg_match('/\.(jpe?g|png|gif|webp)$/i', $image_data['url'], $ext_match)) {
+            $extension = strtolower($ext_match[1]);
+            if ($extension === 'jpeg') {
+              $extension = 'jpg';
+            }
+          }
+          
+          // Generate filename
+          $filename = $image_index === 0 ? "{$slug}.{$extension}" : "{$slug}-{$image_index}.{$extension}";
+          $destination = $directory . '/' . $filename;
+          
+          $file = $this->fileRepository->writeData($image_content, $destination, FileSystemInterface::EXISTS_REPLACE);
+          if ($file) {
+            $file_ids[] = [
+              'target_id' => $file->id(),
+              'alt' => $image_data['alt'] ?: $generated_title,
+            ];
+            $image_index++;
+            
+            $this->logger->info('Downloaded image @filename for Trend ID @id', [
+              '@filename' => $filename,
+              '@id' => $trend->id,
+            ]);
+          }
+        } catch (\Exception $e) {
+          $this->logger->warning('Failed to download image from @url: @message', [
+            '@url' => $image_data['url'],
+            '@message' => $e->getMessage(),
+          ]);
+        }
+        
+        // Limit to reasonable number of images
+        if ($image_index >= 10) {
+          break;
+        }
+      }
+    }
+    
+    // If no images from articles, try the trend main image
+    if (empty($file_ids) && !empty($trend->image_url) && !empty($image_field)) {
       try {
         $file_data = @file_get_contents($trend->image_url);
-        if ($file_data === FALSE) {
-          $error = error_get_last();
-          $this->logger->warning('Failed to download image for Trend ID @id from @url: @message', [
-            '@id' => $trend->id,
-            '@url' => $trend->image_url,
-            '@message' => $error['message'] ?? 'Unknown error',
-          ]);
-        } elseif (!empty($file_data)) {
-          $filename = 'trend_image_' . $trend->id . '.jpg';
+        if ($file_data !== FALSE && !empty($file_data)) {
           $directory = 'public://google_trends';
           $file_system->prepareDirectory($directory, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
+          
+          $filename = "{$slug}.jpg";
           $destination = $directory . '/' . $filename;
+          
           $file = $this->fileRepository->writeData($file_data, $destination, FileSystemInterface::EXISTS_REPLACE);
           if ($file) {
-            $file_id = $file->id();
-          } else {
-            $this->logger->error('Failed to save file for Trend ID @id to @dest', [
-              '@id' => $trend->id,
-              '@dest' => $destination,
-            ]);
+            $file_ids[] = [
+              'target_id' => $file->id(),
+              'alt' => $generated_title,
+            ];
+            $this->logger->info('Downloaded trend main image as @filename', ['@filename' => $filename]);
           }
         }
       } catch (\Exception $e) {
-        $this->logger->warning('Exception during image download/save for Trend ID @id: @message', [
-          '@id' => $trend->id,
-          '@message' => $e->getMessage(),
-        ]);
+        $this->logger->warning('Failed to download trend main image: @message', ['@message' => $e->getMessage()]);
+      }
+    }
+    
+    // Download video thumbnail if video exists
+    if (!empty($media['video']) && !empty($image_field)) {
+      $thumbnail_url = $this->getVideoThumbnail($media['video']);
+      if ($thumbnail_url) {
+        try {
+          $thumbnail_data = @file_get_contents($thumbnail_url);
+          if ($thumbnail_data !== FALSE && !empty($thumbnail_data)) {
+            $directory = 'public://google_trends';
+            $file_system->prepareDirectory($directory, FileSystemInterface::CREATE_DIRECTORY | FileSystemInterface::MODIFY_PERMISSIONS);
+            
+            // Add video thumbnail as first image
+            $filename = "{$slug}-video-thumb.jpg";
+            $destination = $directory . '/' . $filename;
+            
+            $file = $this->fileRepository->writeData($thumbnail_data, $destination, FileSystemInterface::EXISTS_REPLACE);
+            if ($file) {
+              // Prepend video thumbnail to beginning of array
+              array_unshift($file_ids, [
+                'target_id' => $file->id(),
+                'alt' => $generated_title . ' - Video',
+              ]);
+              $this->logger->info('Downloaded video thumbnail as @filename', ['@filename' => $filename]);
+            }
+          }
+        } catch (\Exception $e) {
+          $this->logger->warning('Failed to download video thumbnail: @message', ['@message' => $e->getMessage()]);
+        }
       }
     }
 
@@ -531,12 +798,21 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       'created' => $created_timestamp,
     ]);
 
-    // Attach image if field exists
-    $alt_text = !empty($generated_title) ? $generated_title : $trend->title;
-    if ($file_id && $node->hasField($image_field)) {
-      $node->set($image_field, [
-        'target_id' => $file_id,
-        'alt' => $alt_text,
+    // Attach images if field exists
+    if (!empty($file_ids) && $node->hasField($image_field)) {
+      $node->set($image_field, $file_ids);
+      $this->logger->info('Attached @count images to article for Trend ID @id', [
+        '@count' => count($file_ids),
+        '@id' => $trend->id,
+      ]);
+    }
+    
+    // Attach video if field exists
+    if (!empty($media['video']) && !empty($video_field) && $node->hasField($video_field)) {
+      $node->set($video_field, $media['video']);
+      $this->logger->info('Attached video @url to article for Trend ID @id', [
+        '@url' => $media['video'],
+        '@id' => $trend->id,
       ]);
     }
 
@@ -600,4 +876,5 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
     return $tag_ids;
   }
+
 }

@@ -74,12 +74,12 @@ class SettingsForm extends ConfigFormBase {
       '#maxlength' => 255,
     ];
 
-    // OpenAI model selector
     $form['openai_settings']['openai_model'] = [
       '#type' => 'select',
       '#title' => $this->t('OpenAI Model'),
       '#description' => $this->t('Select the OpenAI model to use for content generation.'),
       '#options' => [
+        'gpt-5' => 'GPT-5 (Next generation, highest capability)',
         'gpt-4o' => 'GPT-4o (Most capable, higher cost)',
         'gpt-4o-mini' => 'GPT-4o Mini (Balanced performance and cost)',
         'o1-preview' => 'O1 Preview (Advanced reasoning, highest cost)',
@@ -139,9 +139,18 @@ class SettingsForm extends ConfigFormBase {
     $form['content_settings']['field_wrapper']['image_field'] = [
       '#type' => 'select',
       '#title' => $this->t('Image Field'),
-      '#description' => $this->t('Select the image field for the content type.'),
+      '#description' => $this->t('Select the image field for the content type. Images from articles will be downloaded and attached here.'),
       '#options' => $field_options['image'],
       '#default_value' => $config->get('image_field') ?: 'field_image',
+      '#empty_option' => $this->t('- None -'),
+    ];
+
+    $form['content_settings']['field_wrapper']['video_field'] = [
+      '#type' => 'select',
+      '#title' => $this->t('Video Embed Field'),
+      '#description' => $this->t('Select the video embed field (video_embed_field type). YouTube/Vimeo videos from articles will be embedded here.'),
+      '#options' => $field_options['video_embed'],
+      '#default_value' => $config->get('video_field'),
       '#empty_option' => $this->t('- None -'),
     ];
 
@@ -259,6 +268,7 @@ class SettingsForm extends ConfigFormBase {
     $options = [
       'image' => [],
       'taxonomy' => [],
+      'video_embed' => [],
     ];
 
     try {
@@ -276,6 +286,9 @@ class SettingsForm extends ConfigFormBase {
         }
         elseif ($field_type === 'entity_reference' && $field->getSetting('target_type') === 'taxonomy_term') {
           $options['taxonomy'][$field_name] = $field_label;
+        }
+        elseif ($field_type === 'video_embed_field') {
+          $options['video_embed'][$field_name] = $field_label;
         }
       }
     }
@@ -296,6 +309,7 @@ class SettingsForm extends ConfigFormBase {
       ->set('openai_prompt', $form_state->getValue('openai_prompt'))
       ->set('content_type', $form_state->getValue('content_type'))
       ->set('image_field', $form_state->getValue('image_field'))
+      ->set('video_field', $form_state->getValue('video_field'))
       ->set('tag_field', $form_state->getValue('tag_field'))
       ->set('tag_vocabulary', $form_state->getValue('tag_vocabulary'))
       ->set('trends_url', $form_state->getValue('trends_url'))
