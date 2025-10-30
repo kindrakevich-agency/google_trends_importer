@@ -2,6 +2,10 @@ google_trends_importer.settings:
   type: config_object
   label: 'Google Trends Importer Settings'
   mapping:
+    ai_provider:
+      type: string
+      label: 'AI Provider'
+      description: 'The AI provider to use (openai or claude)'
     openai_api_key:
       type: string
       label: 'OpenAI API Key'
@@ -11,6 +15,16 @@ google_trends_importer.settings:
     openai_prompt:
       type: text
       label: 'OpenAI Prompt Template'
+      description: 'Template for generating article title, body, and tags.'
+    claude_api_key:
+      type: string
+      label: 'Claude API Key'
+    claude_model:
+      type: string
+      label: 'Claude Model Name'
+    claude_prompt:
+      type: text
+      label: 'Claude Prompt Template'
       description: 'Template for generating article title, body, and tags.'
     content_type:
       type: string

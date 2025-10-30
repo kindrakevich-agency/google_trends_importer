@@ -59,11 +59,29 @@ class SettingsForm extends ConfigFormBase {
   public function buildForm(array $form, FormStateInterface $form_state) {
     $config = $this->config('google_trends_importer.settings');
 
+    // AI Provider Selection
+    $form['ai_provider'] = [
+      '#type' => 'select',
+      '#title' => $this->t('AI Provider'),
+      '#description' => $this->t('Select which AI provider to use for article generation.'),
+      '#options' => [
+        'openai' => 'OpenAI (ChatGPT)',
+        'claude' => 'Anthropic Claude',
+      ],
+      '#default_value' => $config->get('ai_provider') ?: 'openai',
+      '#required' => TRUE,
+    ];
+
     // OpenAI Settings
     $form['openai_settings'] = [
       '#type' => 'details',
       '#title' => $this->t('OpenAI Settings'),
       '#open' => TRUE,
+      '#states' => [
+        'visible' => [
+          ':input[name="ai_provider"]' => ['value' => 'openai'],
+        ],
+      ],
     ];
 
     $form['openai_settings']['openai_api_key'] = [
@@ -98,6 +116,50 @@ class SettingsForm extends ConfigFormBase {
       '#description' => $this->t('Template for generating article title, body, and selecting tags. Use %s for placeholders: 1) trend title, 2) news content, 3) available tags (when vocabulary is selected). Include separators: ---TITLE_SEPARATOR--- (between title and body) and ---TAGS_SEPARATOR--- (between body and tags).'),
       '#rows' => 25,
       '#default_value' => $config->get('openai_prompt'),
+      '#required' => TRUE,
+    ];
+
+    // Claude Settings
+    $form['claude_settings'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Claude Settings'),
+      '#open' => TRUE,
+      '#states' => [
+        'visible' => [
+          ':input[name="ai_provider"]' => ['value' => 'claude'],
+        ],
+      ],
+    ];
+
+    $form['claude_settings']['claude_api_key'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Claude API Key'),
+      '#description' => $this->t('Enter your API key from Anthropic.'),
+      '#default_value' => $config->get('claude_api_key'),
+      '#maxlength' => 255,
+    ];
+
+    $form['claude_settings']['claude_model'] = [
+      '#type' => 'select',
+      '#title' => $this->t('Claude Model'),
+      '#description' => $this->t('Select the Claude model to use for content generation.'),
+      '#options' => [
+        'claude-3-5-sonnet-20241022' => 'Claude 3.5 Sonnet (Latest, best for most tasks)',
+        'claude-3-5-haiku-20241022' => 'Claude 3.5 Haiku (Fastest, most cost-effective)',
+        'claude-3-opus-20240229' => 'Claude 3 Opus (Most capable, highest cost)',
+        'claude-3-sonnet-20240229' => 'Claude 3 Sonnet (Balanced)',
+        'claude-3-haiku-20240307' => 'Claude 3 Haiku (Fast and efficient)',
+      ],
+      '#default_value' => $config->get('claude_model') ?: 'claude-3-5-sonnet-20241022',
+      '#required' => TRUE,
+    ];
+
+    $form['claude_settings']['claude_prompt'] = [
+      '#type' => 'textarea',
+      '#title' => $this->t('Claude Prompt Template'),
+      '#description' => $this->t('Template for generating article title, body, and selecting tags. Use %s for placeholders: 1) trend title, 2) news content, 3) available tags (when vocabulary is selected). Include separators: ---TITLE_SEPARATOR--- (between title and body) and ---TAGS_SEPARATOR--- (between body and tags).'),
+      '#rows' => 25,
+      '#default_value' => $config->get('claude_prompt'),
       '#required' => TRUE,
     ];
 
@@ -304,9 +366,13 @@ class SettingsForm extends ConfigFormBase {
    */
   public function submitForm(array &$form, FormStateInterface $form_state) {
     $this->config('google_trends_importer.settings')
+      ->set('ai_provider', $form_state->getValue('ai_provider'))
       ->set('openai_api_key', $form_state->getValue('openai_api_key'))
       ->set('openai_model', $form_state->getValue('openai_model'))
       ->set('openai_prompt', $form_state->getValue('openai_prompt'))
+      ->set('claude_api_key', $form_state->getValue('claude_api_key'))
+      ->set('claude_model', $form_state->getValue('claude_model'))
+      ->set('claude_prompt', $form_state->getValue('claude_prompt'))
       ->set('content_type', $form_state->getValue('content_type'))
       ->set('image_field', $form_state->getValue('image_field'))
       ->set('video_field', $form_state->getValue('video_field'))
