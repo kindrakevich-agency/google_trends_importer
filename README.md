@@ -2,19 +2,21 @@
 
 ## Overview
 
-Automatically fetches daily Google Trends, scrapes related news articles with images and videos, uses OpenAI to generate high-quality content with AI-powered auto-tagging, and publishes articles to your Drupal site. Features intelligent media extraction, video embedding, cost tracking, traffic filtering, and queue-based processing for reliability.
+Automatically fetches daily Google Trends, scrapes related news articles with images and videos, uses OpenAI or Claude AI to generate high-quality content with AI-powered auto-tagging, and publishes articles to your Drupal site. Features intelligent media extraction, video embedding, domain assignment, cost tracking, traffic filtering, and queue-based processing for reliability.
 
 ## Features
 
+* **Dual AI Provider Support** - Choose between OpenAI or Anthropic Claude 🆕
 * **Flexible Content Type Support** - Works with any content type
-* **AI-Powered Auto-Tagging** - ChatGPT selects relevant tags from your vocabulary
+* **AI-Powered Auto-Tagging** - AI selects relevant tags from your vocabulary
 * **Intelligent Image Extraction** - Downloads images from article bodies, sorted by resolution
 * **Video Embedding** - Extracts YouTube/Vimeo videos with automatic thumbnail generation
+* **Domain Assignment** - Automatically assign articles to Drupal Domain module domains 🆕
 * **Smart File Naming** - Images named using article slugs (e.g., `article-slug.jpg`, `article-slug-1.jpg`)
-* **Cost Tracking** - Tracks OpenAI API costs per article
+* **Cost Tracking** - Tracks AI API costs per article (OpenAI & Claude)
 * **Traffic Filtering** - Only process trends above minimum threshold
 * **Rate Limiting** - Control trends processed per cron run
-* **Model Selection** - Choose from GPT-5, GPT-4o, O1, and more
+* **Model Selection** - Choose from GPT-5, GPT-4o, Claude 3.5 Sonnet, Claude 3.5 Haiku, and more
 * **Queue-Based Processing** - Reliable background processing
 * **Content Scraping** - Uses Readability algorithm for clean content
 * **Full Logging** - Debug prompts and responses in dblog
@@ -28,8 +30,9 @@ Automatically fetches daily Google Trends, scrapes related news articles with im
   - Optional: Video embed field (video_embed_field module)
   - Optional: Taxonomy reference field for tags
 * A taxonomy vocabulary for auto-tagging (recommended)
-* Valid **OpenAI API Key** from https://platform.openai.com/api-keys
+* Valid **OpenAI API Key** from https://platform.openai.com/api-keys OR **Claude API Key** from https://console.anthropic.com/
 * Composer for dependency management
+* Optional: Domain module for multi-domain support
 
 ## Installation
 
@@ -38,15 +41,24 @@ Automatically fetches daily Google Trends, scrapes related news articles with im
 From your Drupal project root:
 
 ```bash
-composer require openai-php/client:"^0.3.1"
+# Required dependencies
 composer require symfony/dom-crawler:"^6.4 || ^7.0"
 composer require symfony/css-selector:"^6.4 || ^7.0"
 composer require fivefilters/readability.php:"^3.0"
 
+# For OpenAI (only if using OpenAI as provider)
+composer require openai-php/client:"^0.3.1"
+
 # Optional: For video embedding
 composer require drupal/video_embed_field
 drush en video_embed_field -y
+
+# Optional: For domain assignment
+composer require drupal/domain
+drush en domain -y
 ```
+
+**Note:** Claude AI support uses Drupal's built-in HTTP client and requires no additional dependencies.
 
 ### 2. Enable Module
 
@@ -91,12 +103,18 @@ Verify at `/admin/content/imported-trends`: Traffic shows "100K+", dates formatt
 
 Go to: `/admin/config/system/google-trends-importer`
 
+### AI Provider Selection
+
+**AI Provider** (required): Choose between OpenAI or Anthropic Claude
+
 ### OpenAI Settings
+
+Shows when OpenAI is selected as provider.
 
 **API Key** (required): Get from https://platform.openai.com/api-keys
 
 **Model** (required):
-* **GPT-5** - Next generation, highest capability (~$0.10-0.30/article) 🆕
+* **GPT-5** - Next generation, highest capability (~$0.10-0.30/article)
 * **GPT-4o Mini** - Best balance (~$0.003-0.01/article) ⭐ Recommended
 * GPT-4o - Highest quality (~$0.05-0.15/article)
 * O1 Mini - Fast reasoning (~$0.06-0.18/article)
@@ -110,6 +128,21 @@ Go to: `/admin/config/system/google-trends-importer`
 3. `%s` - Available tags
 
 Must include separators: `---TITLE_SEPARATOR---` and `---TAGS_SEPARATOR---`
+
+### Claude Settings 🆕
+
+Shows when Claude is selected as provider.
+
+**API Key** (required): Get from https://console.anthropic.com/
+
+**Model** (required):
+* **Claude 3.5 Sonnet** - Latest, best for most tasks (~$0.04-0.20/article) ⭐ Recommended
+* **Claude 3.5 Haiku** - Fastest, most cost-effective (~$0.02-0.08/article)
+* Claude 3 Opus - Most capable, highest cost (~$0.20-1.00/article)
+* Claude 3 Sonnet - Balanced performance (~$0.04-0.20/article)
+* Claude 3 Haiku - Fast and efficient (~$0.005-0.025/article)
+
+**Prompt Template** (required): Same format as OpenAI - uses 3 placeholders and same separators
 
 ### Content Type Settings
 
@@ -129,7 +162,17 @@ Must include separators: `---TITLE_SEPARATOR---` and `---TAGS_SEPARATOR---`
 
 ### Taxonomy Settings
 
-**Tag Vocabulary**: Select vocabulary for auto-tagging. ChatGPT will receive all terms from this vocabulary and select the most relevant ones for each article.
+**Tag Vocabulary**: Select vocabulary for auto-tagging. The AI will receive all terms from this vocabulary and select the most relevant ones for each article.
+
+### Domain Settings 🆕
+
+**Domain** (optional): Assign all imported articles to a specific domain. Only shows if Domain module is enabled and domains are configured.
+
+The module automatically sets:
+- `field_domain_access` - Controls which domain can access the content
+- `field_domain_source` - Indicates the primary domain for the content
+
+Leave empty to not assign any domain.
 
 ### Feed Settings
 
@@ -154,12 +197,13 @@ Must include separators: `---TITLE_SEPARATOR---` and `---TAGS_SEPARATOR---`
 - **Extracts YouTube/Vimeo video embeds** 🆕
 - **Downloads video thumbnails (max resolution)** 🆕
 - Loads vocabulary tags
-- Sends to OpenAI with complete prompt
+- Sends to OpenAI or Claude with complete prompt 🆕
 - Calculates and stores cost
 - Parses response (title, body, tags)
 - **Downloads and attaches all images with slug-based naming** 🆕
 - **Attaches video embed if found** 🆕
 - Creates/finds taxonomy terms
+- **Assigns to selected domain if configured** 🆕
 - Creates published article node with all fields
 
 ## Usage
@@ -171,7 +215,7 @@ Shows: Title, Traffic (K), Published, Imported, Cost, Article link
 
 ### Review AI Prompts and Responses
 
-The module logs all prompts sent to OpenAI and responses received. This helps you:
+The module logs all prompts sent to your AI provider (OpenAI or Claude) and responses received. This helps you:
 - Verify what's being sent to the AI
 - Debug issues with generated content
 - Refine your prompt template
@@ -196,10 +240,10 @@ drush watchdog:show --type=google_trends_importer | grep "Trend ID 123"
 ```
 
 **Log entries include:**
-- **Info**: "Sending prompt to OpenAI for Trend ID X"
+- **Info**: "Sending prompt to [OpenAI/Claude] for Trend ID X"
 - **Debug**: Full prompt with all content, tags, and instructions
 - **Debug**: Full AI response with title, body, and selected tags
-- **Info**: Processing results (success, cost, node created)
+- **Info**: Processing results (success, cost, node created, domain assigned)
 
 ### Monitor Costs
 
@@ -222,6 +266,8 @@ drush queue:run google_trends_processor
 
 ### Estimates
 
+**OpenAI Models:**
+
 | Model | Per Article | 120/day | 240/day |
 |-------|-------------|---------|---------|
 | GPT-4o Mini | $0.003-0.01 | $0.36-1.20 | $0.72-2.40 |
@@ -230,9 +276,19 @@ drush queue:run google_trends_processor
 | GPT-4o | $0.05-0.15 | $6-18 | $12-36 |
 | O1 Preview | $0.30-0.90 | $36-108 | $72-216 |
 
+**Claude Models:**
+
+| Model | Per Article | 120/day | 240/day |
+|-------|-------------|---------|---------|
+| Claude 3 Haiku | $0.005-0.025 | $0.60-3.00 | $1.20-6.00 |
+| Claude 3.5 Haiku | $0.02-0.08 | $2.40-9.60 | $4.80-19.20 |
+| Claude 3.5 Sonnet | $0.04-0.20 | $4.80-24.00 | $9.60-48.00 |
+| Claude 3 Sonnet | $0.04-0.20 | $4.80-24.00 | $9.60-48.00 |
+| Claude 3 Opus | $0.20-1.00 | $24-120 | $48-240 |
+
 ### Control Costs
 
-1. Use GPT-4o Mini (recommended)
+1. Use GPT-4o Mini (OpenAI) or Claude 3 Haiku (Claude) for best value ⭐
 2. Set `max_trends` to 5 or less
 3. Set `min_traffic` to filter low-value trends
 4. Monitor costs in view for first week
@@ -257,8 +313,13 @@ drush queue:run google_trends_processor
 
 **Queue stuck**
 - Run manually: `drush queue:run google_trends_processor`
-- Check OpenAI API key is valid
+- Check AI API key is valid (OpenAI or Claude)
 - Review logs for errors
+
+**Domain not assigned**
+- Verify Domain module is enabled
+- Check domain is selected in settings
+- Ensure content type has `field_domain_access` and `field_domain_source` fields
 
 ## Advanced Configuration
 
@@ -312,14 +373,23 @@ Separators:
 
 ## Version History
 
+### 2.1.0 🆕
+* **Claude AI support** - Choose between OpenAI or Anthropic Claude as AI provider
+* **Domain module integration** - Automatically assign articles to domains
+* Claude 3.5 Sonnet and Claude 3.5 Haiku model support
+* Separate prompt templates for OpenAI and Claude
+* Cost tracking for both OpenAI and Claude
+* Provider-aware logging (logs which AI provider was used)
+* No additional dependencies required for Claude (uses HTTP client)
+
 ### 2.0.0
 * AI-powered auto-tagging with vocabulary selection
-* **Intelligent image extraction from article bodies** 🆕
-* **Video embedding support (YouTube/Vimeo)** 🆕
-* **Automatic video thumbnail download** 🆕
-* **Slug-based file naming** 🆕
-* **Image sorting by resolution** 🆕
-* **GPT-5 model support** 🆕
+* Intelligent image extraction from article bodies
+* Video embedding support (YouTube/Vimeo)
+* Automatic video thumbnail download
+* Slug-based file naming
+* Image sorting by resolution
+* GPT-5 model support
 * Cost tracking per article
 * Traffic filtering (int field, min threshold)
 * Max trends limit per run
@@ -345,4 +415,4 @@ GPL-2.0-or-later
 
 ---
 
-**Quick Start:** Enable module → Install video_embed_field (optional) → Add API key → Select model → Configure image/video/tag fields → Configure vocabulary → Save → Click "Fetch Now" → Check `/admin/content/imported-trends` → Review articles with images and videos!
+**Quick Start:** Enable module → Install video_embed_field & domain (optional) → Choose AI provider (OpenAI or Claude) → Add API key → Select model → Configure image/video/tag/domain fields → Configure vocabulary → Save → Click "Fetch Now" → Check `/admin/content/imported-trends` → Review articles with images and videos!
