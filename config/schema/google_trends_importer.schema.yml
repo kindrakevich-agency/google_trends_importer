@@ -32,9 +32,6 @@ google_trends_importer.settings:
     image_field:
       type: string
       label: 'Image Field Name'
-    video_field:
-      type: string
-      label: 'Video Embed Field Name'
     tag_field:
       type: string
       label: 'Tag Field Name'

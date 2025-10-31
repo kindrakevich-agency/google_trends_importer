@@ -207,15 +207,6 @@ class SettingsForm extends ConfigFormBase {
       '#empty_option' => $this->t('- None -'),
     ];
 
-    $form['content_settings']['field_wrapper']['video_field'] = [
-      '#type' => 'select',
-      '#title' => $this->t('Video Embed Field'),
-      '#description' => $this->t('Select the video embed field (video_embed_field type). YouTube/Vimeo videos from articles will be embedded here.'),
-      '#options' => $field_options['video_embed'],
-      '#default_value' => $config->get('video_field'),
-      '#empty_option' => $this->t('- None -'),
-    ];
-
     $form['content_settings']['field_wrapper']['tag_field'] = [
       '#type' => 'select',
       '#title' => $this->t('Tag Field'),
@@ -408,7 +399,6 @@ class SettingsForm extends ConfigFormBase {
       ->set('claude_prompt', $form_state->getValue('claude_prompt'))
       ->set('content_type', $form_state->getValue('content_type'))
       ->set('image_field', $form_state->getValue('image_field'))
-      ->set('video_field', $form_state->getValue('video_field'))
       ->set('tag_field', $form_state->getValue('tag_field'))
       ->set('tag_vocabulary', $form_state->getValue('tag_vocabulary'))
       ->set('domain_id', $form_state->getValue('domain_id'))

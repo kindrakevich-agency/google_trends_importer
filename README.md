@@ -27,7 +27,7 @@ Automatically fetches daily Google Trends, scrapes related news articles with im
 * PHP 8.1 or higher (PHP 8.3+ recommended)
 * A content type with:
   - Image field (for article images and video thumbnails)
-  - Optional: Video embed field (video_embed_field module)
+  - Body field with 'full_html' format enabled (for video embeds)
   - Optional: Taxonomy reference field for tags
 * A taxonomy vocabulary for auto-tagging (recommended)
 * Valid **OpenAI API Key** from https://platform.openai.com/api-keys OR **Claude API Key** from https://console.anthropic.com/
@@ -49,16 +49,14 @@ composer require fivefilters/readability.php:"^3.0"
 # For OpenAI (only if using OpenAI as provider)
 composer require openai-php/client:"^0.3.1"
 
-# Optional: For video embedding
-composer require drupal/video_embed_field
-drush en video_embed_field -y
-
 # Optional: For domain assignment
 composer require drupal/domain
 drush en domain -y
 ```
 
-**Note:** Claude AI support uses Drupal's built-in HTTP client and requires no additional dependencies.
+**Note:**
+- Claude AI support uses Drupal's built-in HTTP client and requires no additional dependencies
+- Videos are automatically embedded in the article body HTML - no video_embed_field module needed
 
 ### 2. Enable Module
 
@@ -148,16 +146,16 @@ Shows when Claude is selected as provider.
 
 * **Content Type**: Which type to create (default: Article)
 * **Image Field**: Where to attach images from articles and video thumbnails (AJAX updates on content type change)
-* **Video Field**: Video embed field for YouTube/Vimeo videos (requires video_embed_field module) 🆕
 * **Tag Field**: Taxonomy field for auto-tagging (AJAX updates)
 
 **Media Processing:**
 - Automatically extracts images from article bodies
 - Downloads images and names them using article slug (e.g., `slug.jpg`, `slug-1.jpg`, `slug-2.jpg`)
 - Sorts images by resolution (largest first)
-- Extracts YouTube/Vimeo video iframes
+- Extracts YouTube/Vimeo video iframes and embeds them in article body HTML 🆕
 - Downloads maximum resolution video thumbnails
 - Video thumbnail placed as first image
+- Videos embedded with responsive 16:9 aspect ratio
 - Supports up to 10 images per article
 
 ### Taxonomy Settings
@@ -192,18 +190,18 @@ Leave empty to not assign any domain.
 
 **Step 2: Queue Worker** (background)
 - Scrapes article content using Readability
-- **Extracts images from article HTML bodies** 🆕
-- **Sorts images by resolution (largest first)** 🆕
-- **Extracts YouTube/Vimeo video embeds** 🆕
-- **Downloads video thumbnails (max resolution)** 🆕
+- **Extracts images from article HTML bodies**
+- **Sorts images by resolution (largest first)**
+- **Extracts YouTube/Vimeo video embeds**
+- **Downloads video thumbnails (max resolution)**
 - Loads vocabulary tags
-- Sends to OpenAI or Claude with complete prompt 🆕
+- Sends to OpenAI or Claude with complete prompt
 - Calculates and stores cost
 - Parses response (title, body, tags)
-- **Downloads and attaches all images with slug-based naming** 🆕
-- **Attaches video embed if found** 🆕
+- **Embeds video in article body HTML if found** 🆕
+- **Downloads and attaches all images with slug-based naming**
 - Creates/finds taxonomy terms
-- **Assigns to selected domain if configured** 🆕
+- **Assigns to selected domain if configured**
 - Creates published article node with all fields
 
 ## Usage
@@ -328,8 +326,9 @@ drush queue:run google_trends_processor
 Works with any content type:
 1. Create/select your content type
 2. Add image field
-3. Add taxonomy reference field
-4. Configure in module settings
+3. Ensure body field has 'full_html' format enabled for video embeds
+4. Add taxonomy reference field (optional)
+5. Configure in module settings
 
 ### Custom Prompts
 
@@ -376,10 +375,12 @@ Separators:
 ### 2.1.0 🆕
 * **Claude AI support** - Choose between OpenAI or Anthropic Claude as AI provider
 * **Domain module integration** - Automatically assign articles to domains
+* **Video embedding in body** - Videos now embedded directly in article body HTML (no video_embed_field module needed)
 * Claude 3.5 Sonnet and Claude 3.5 Haiku model support
 * Separate prompt templates for OpenAI and Claude
 * Cost tracking for both OpenAI and Claude
 * Provider-aware logging (logs which AI provider was used)
+* Responsive video embeds with 16:9 aspect ratio
 * No additional dependencies required for Claude (uses HTTP client)
 
 ### 2.0.0
@@ -415,4 +416,4 @@ GPL-2.0-or-later
 
 ---
 
-**Quick Start:** Enable module → Install video_embed_field & domain (optional) → Choose AI provider (OpenAI or Claude) → Add API key → Select model → Configure image/video/tag/domain fields → Configure vocabulary → Save → Click "Fetch Now" → Check `/admin/content/imported-trends` → Review articles with images and videos!
+**Quick Start:** Enable module → Install domain module (optional) → Choose AI provider (OpenAI or Claude) → Add API key → Select model → Configure image/tag/domain fields → Configure vocabulary → Save → Click "Fetch Now" → Check `/admin/content/imported-trends` → Review articles with embedded videos and images!

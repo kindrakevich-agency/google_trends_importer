@@ -771,14 +771,34 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
   private function createArticleNode($trend, $generated_title, $body_text, $tags, $config, $media) {
     $content_type = $config->get('content_type') ?: 'article';
     $image_field = $config->get('image_field') ?: 'field_image';
-    $video_field = $config->get('video_field');
     $tag_field = $config->get('tag_field');
-    
+
     $node_storage = $this->entityTypeManager->getStorage('node');
     $file_system = \Drupal::service('file_system');
-    
+
     // Generate slug for filenames
     $slug = $this->generateSlug($generated_title);
+
+    // Embed video in body if present
+    if (!empty($media['video'])) {
+      $video_url = $media['video'];
+      // Ensure the video URL is suitable for embedding
+      if (strpos($video_url, 'youtube.com') !== FALSE || strpos($video_url, 'youtu.be') !== FALSE || strpos($video_url, 'vimeo.com') !== FALSE) {
+        $video_embed = '<div class="embedded-video" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; margin: 20px 0;">';
+        $video_embed .= '<iframe src="' . htmlspecialchars($video_url, ENT_QUOTES, 'UTF-8') . '" ';
+        $video_embed .= 'style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" ';
+        $video_embed .= 'frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+        $video_embed .= '</div>';
+
+        // Add video embed at the beginning of the body
+        $body_text = $video_embed . "\n\n" . $body_text;
+
+        $this->logger->info('Embedded video @url in article body for Trend ID @id', [
+          '@url' => $video_url,
+          '@id' => $trend->id,
+        ]);
+      }
+    }
 
     $file_ids = [];
     
@@ -917,15 +937,6 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       $node->set($image_field, $file_ids);
       $this->logger->info('Attached @count images to article for Trend ID @id', [
         '@count' => count($file_ids),
-        '@id' => $trend->id,
-      ]);
-    }
-    
-    // Attach video if field exists
-    if (!empty($media['video']) && !empty($video_field) && $node->hasField($video_field)) {
-      $node->set($video_field, $media['video']);
-      $this->logger->info('Attached video @url to article for Trend ID @id', [
-        '@url' => $media['video'],
         '@id' => $trend->id,
       ]);
     }
