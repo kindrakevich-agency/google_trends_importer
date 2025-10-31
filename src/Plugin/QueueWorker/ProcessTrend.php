@@ -942,6 +942,22 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       }
     }
 
+    // Assign domain if configured and Domain module is enabled
+    $domain_id = $config->get('domain_id');
+    if (!empty($domain_id) && \Drupal::moduleHandler()->moduleExists('domain')) {
+      if ($node->hasField('field_domain_access')) {
+        $node->set('field_domain_access', [$domain_id]);
+        $this->logger->info('Assigned domain @domain to article for Trend ID @id', [
+          '@domain' => $domain_id,
+          '@id' => $trend->id,
+        ]);
+      }
+      // Also set domain source if the field exists
+      if ($node->hasField('field_domain_source')) {
+        $node->set('field_domain_source', $domain_id);
+      }
+    }
+
     $node->save();
     return $node->id();
   }

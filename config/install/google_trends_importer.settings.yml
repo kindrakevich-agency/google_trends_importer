@@ -9,6 +9,7 @@ image_field: 'field_image'
 video_field: ''
 tag_field: ''
 tag_vocabulary: ''
+domain_id: ''
 min_traffic: null
 max_trends: 5
 cron_enabled: true

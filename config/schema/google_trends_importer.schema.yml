@@ -41,6 +41,10 @@ google_trends_importer.settings:
     tag_vocabulary:
       type: string
       label: 'Tag Vocabulary'
+    domain_id:
+      type: string
+      label: 'Domain ID'
+      description: 'The domain ID to assign to imported articles'
     trends_url:
       type: string
       label: 'Google Trends RSS URL'

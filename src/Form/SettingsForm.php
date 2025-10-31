@@ -247,6 +247,39 @@ class SettingsForm extends ConfigFormBase {
       '#empty_option' => $this->t('- None -'),
     ];
 
+    // Domain Settings
+    $form['domain_settings'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Domain Settings'),
+      '#open' => TRUE,
+    ];
+
+    // Check if Domain module is enabled
+    $domain_options = [];
+    if (\Drupal::moduleHandler()->moduleExists('domain')) {
+      $domain_storage = $this->entityTypeManager->getStorage('domain');
+      $domains = $domain_storage->loadMultiple();
+      foreach ($domains as $domain) {
+        $domain_options[$domain->id()] = $domain->label();
+      }
+    }
+
+    $form['domain_settings']['domain_id'] = [
+      '#type' => 'select',
+      '#title' => $this->t('Domain'),
+      '#description' => $this->t('Select the domain to assign all imported articles to. Leave empty to not assign any domain.'),
+      '#options' => $domain_options,
+      '#default_value' => $config->get('domain_id'),
+      '#empty_option' => $this->t('- None -'),
+      '#access' => !empty($domain_options),
+    ];
+
+    if (empty($domain_options)) {
+      $form['domain_settings']['domain_warning'] = [
+        '#markup' => '<p>' . $this->t('The Domain module is not enabled or no domains are configured.') . '</p>',
+      ];
+    }
+
     // Trends Feed Settings
     $form['feed_settings'] = [
       '#type' => 'details',
@@ -378,6 +411,7 @@ class SettingsForm extends ConfigFormBase {
       ->set('video_field', $form_state->getValue('video_field'))
       ->set('tag_field', $form_state->getValue('tag_field'))
       ->set('tag_vocabulary', $form_state->getValue('tag_vocabulary'))
+      ->set('domain_id', $form_state->getValue('domain_id'))
       ->set('trends_url', $form_state->getValue('trends_url'))
       ->set('min_traffic', $form_state->getValue('min_traffic'))
       ->set('max_trends', $form_state->getValue('max_trends'))
