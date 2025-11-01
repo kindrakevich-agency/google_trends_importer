@@ -41,21 +41,28 @@ Automatically fetches daily Google Trends, scrapes related news articles with im
 From your Drupal project root:
 
 ```bash
-# Required dependencies
+# Required dependencies (always needed)
 composer require symfony/dom-crawler:"^6.4 || ^7.0"
 composer require symfony/css-selector:"^6.4 || ^7.0"
 composer require fivefilters/readability.php:"^3.0"
 
-# For OpenAI (only if using OpenAI as provider)
+# Choose your AI provider (install at least one):
+
+# Option A: OpenAI (GPT models)
 composer require openai-php/client:"^0.3.1"
+
+# Option B: Claude (no additional dependencies needed - uses built-in HTTP client)
+# Nothing to install! Just enable the module and configure Claude API key
 
 # Optional: For domain assignment
 composer require drupal/domain
 drush en domain -y
 ```
 
-**Note:**
-- Claude AI support uses Drupal's built-in HTTP client and requires no additional dependencies
+**Important Notes:**
+- **Claude AI** uses Drupal's built-in HTTP client - no additional dependencies required
+- **OpenAI** requires the `openai-php/client` library - install it if using OpenAI models
+- You must install OpenAI library if using OpenAI as provider, or you'll get a fatal error
 - Videos are automatically embedded in the article body HTML - no video_embed_field module needed
 
 ### 2. Enable Module
@@ -318,6 +325,12 @@ drush queue:run google_trends_processor
 - Verify Domain module is enabled
 - Check domain is selected in settings
 - Ensure content type has `field_domain_access` and `field_domain_source` fields
+
+**Error: Class "OpenAI" not found**
+- This means you selected OpenAI as provider but haven't installed the OpenAI library
+- Fix: Run `composer require openai-php/client:"^0.3.1"`
+- Alternative: Switch to Claude provider (no additional library needed)
+- Check logs at `/admin/reports/dblog` for the error message
 
 ## Advanced Configuration
 

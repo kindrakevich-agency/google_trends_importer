@@ -113,6 +113,25 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
     $claude_api_key = null;
 
     if ($ai_provider === 'openai') {
+      // Check if OpenAI library is installed
+      if (!class_exists('\OpenAI')) {
+        $container->get('logger.factory')->get('google_trends_importer')
+          ->error('OpenAI library is not installed. Please run: composer require openai-php/client');
+        return new static(
+          $configuration,
+          $plugin_id,
+          $plugin_definition,
+          $container->get('database'),
+          null,
+          $container->get('http_client'),
+          $container->get('logger.factory'),
+          $container->get('entity_type.manager'),
+          $container->get('file.repository'),
+          $config_factory,
+          null
+        );
+      }
+
       $api_key = $config->get('openai_api_key');
       if (!empty($api_key)) {
         try {
