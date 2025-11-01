@@ -982,9 +982,14 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
           '@id' => $trend->id,
         ]);
       }
-      // Also set domain source if the field exists
-      if ($node->hasField('field_domain_source')) {
+      // Set domain source if the field exists and skip_domain_source is not checked
+      $skip_domain_source = $config->get('skip_domain_source');
+      if (!$skip_domain_source && $node->hasField('field_domain_source')) {
         $node->set('field_domain_source', $domain_id);
+        $this->logger->info('Set domain source @domain for Trend ID @id', [
+          '@domain' => $domain_id,
+          '@id' => $trend->id,
+        ]);
       }
     }
 

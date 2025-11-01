@@ -42,14 +42,14 @@ From your Drupal project root:
 
 ```bash
 # Required dependencies (always needed)
-composer require symfony/dom-crawler:"^6.4 || ^7.0"
-composer require symfony/css-selector:"^6.4 || ^7.0"
-composer require fivefilters/readability.php:"^3.0"
+composer require symfony/dom-crawler
+composer require symfony/css-selector
+composer require fivefilters/readability.php
 
 # Choose your AI provider (install at least one):
 
 # Option A: OpenAI (GPT models)
-composer require openai-php/client:"^0.3.1"
+composer require openai-php/client
 
 # Option B: Claude (no additional dependencies needed - uses built-in HTTP client)
 # Nothing to install! Just enable the module and configure Claude API key
@@ -61,9 +61,10 @@ drush en domain -y
 
 **Important Notes:**
 - **Claude AI** uses Drupal's built-in HTTP client - no additional dependencies required
-- **OpenAI** requires the `openai-php/client` library - install it if using OpenAI models
+- **OpenAI** requires the `openai-php/client` library (v0.10+) - install it if using OpenAI models
 - You must install OpenAI library if using OpenAI as provider, or you'll get a fatal error
 - Videos are automatically embedded in the article body HTML - no video_embed_field module needed
+- Composer will automatically install the latest compatible versions
 
 ### 2. Enable Module
 
@@ -173,11 +174,13 @@ Shows when Claude is selected as provider.
 
 **Domain** (optional): Assign all imported articles to a specific domain. Only shows if Domain module is enabled and domains are configured.
 
-The module automatically sets:
-- `field_domain_access` - Controls which domain can access the content
-- `field_domain_source` - Indicates the primary domain for the content
+**Skip Domain Source** (optional): If checked, only the domain access field will be set. The domain source field will not be assigned.
 
-Leave empty to not assign any domain.
+The module can set:
+- `field_domain_access` - Controls which domain can access the content (always set if domain is selected)
+- `field_domain_source` - Indicates the primary domain for the content (only set if "Skip Domain Source" is unchecked)
+
+Leave domain empty to not assign any domain.
 
 ### Feed Settings
 
@@ -328,9 +331,14 @@ drush queue:run google_trends_processor
 
 **Error: Class "OpenAI" not found**
 - This means you selected OpenAI as provider but haven't installed the OpenAI library
-- Fix: Run `composer require openai-php/client:"^0.3.1"`
+- Fix: Run `composer require openai-php/client`
 - Alternative: Switch to Claude provider (no additional library needed)
 - Check logs at `/admin/reports/dblog` for the error message
+
+**Deprecated warnings with OpenAI library**
+- If you see deprecation warnings about nullable parameters
+- Fix: Update to latest OpenAI library: `composer update openai-php/client`
+- The module now requires openai-php/client v0.10+ which fixes PHP 8.1+ deprecation warnings
 
 ## Advanced Configuration
 

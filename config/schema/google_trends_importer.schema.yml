@@ -42,6 +42,10 @@ google_trends_importer.settings:
       type: string
       label: 'Domain ID'
       description: 'The domain ID to assign to imported articles'
+    skip_domain_source:
+      type: boolean
+      label: 'Skip Domain Source'
+      description: 'If true, do not set the domain source field for imported articles'
     trends_url:
       type: string
       label: 'Google Trends RSS URL'

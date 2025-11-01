@@ -265,6 +265,14 @@ class SettingsForm extends ConfigFormBase {
       '#access' => !empty($domain_options),
     ];
 
+    $form['domain_settings']['skip_domain_source'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Skip Domain Source'),
+      '#description' => $this->t('If checked, the domain source field will not be set for imported articles. Only domain access will be assigned.'),
+      '#default_value' => $config->get('skip_domain_source'),
+      '#access' => !empty($domain_options),
+    ];
+
     if (empty($domain_options)) {
       $form['domain_settings']['domain_warning'] = [
         '#markup' => '<p>' . $this->t('The Domain module is not enabled or no domains are configured.') . '</p>',
@@ -402,6 +410,7 @@ class SettingsForm extends ConfigFormBase {
       ->set('tag_field', $form_state->getValue('tag_field'))
       ->set('tag_vocabulary', $form_state->getValue('tag_vocabulary'))
       ->set('domain_id', $form_state->getValue('domain_id'))
+      ->set('skip_domain_source', (bool) $form_state->getValue('skip_domain_source'))
       ->set('trends_url', $form_state->getValue('trends_url'))
       ->set('min_traffic', $form_state->getValue('min_traffic'))
       ->set('max_trends', $form_state->getValue('max_trends'))
