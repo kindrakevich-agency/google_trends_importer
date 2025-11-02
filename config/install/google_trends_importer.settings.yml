@@ -1,15 +1,43 @@
+ai_provider: 'openai'
 openai_api_key: ''
 openai_model: 'gpt-4o-mini'
+claude_api_key: ''
+claude_model: 'claude-3-5-sonnet-20241022'
 trends_url: 'https://trends.google.com/trending/rss?geo=US'
 content_type: 'article'
 image_field: 'field_image'
-video_field: ''
 tag_field: ''
 tag_vocabulary: ''
+domain_id: ''
+skip_domain_source: false
 min_traffic: null
 max_trends: 5
 cron_enabled: true
 openai_prompt: |
+  You are an expert news editor. Your task is to generate a compelling news article title, a full HTML body, and relevant tags based on a Google Search Trend topic and related news snippets.
+
+  The original search trend topic is: '%s'
+
+  Here are snippets from related news articles:
+  %s
+
+  Available tags for categorization: %s
+
+  Instructions:
+  1. Generate a short, engaging, SEO-friendly title for a news article about this topic, using both the original trend topic and the context from the provided news snippets.
+  2. Generate a well-structured news article body in HTML format, synthesizing the information from the snippets. Ensure it flows logically and is easy to read. Include paragraphs (<p>), and consider using headings (<h2>, <h3>) or lists (<ul>, <ol>) if appropriate. Do not include the <html> or <body> tags, only the content that would go inside the body.
+  3. Based on the article content and the available tags list above, select the 3-5 most relevant tags. Only use tags from the provided list. Return the selected tags as a comma-separated list.
+  4. Use these exact separator lines to divide your response:
+     - Between title and body: ---TITLE_SEPARATOR---
+     - Between body and tags: ---TAGS_SEPARATOR---
+
+  Output format:
+  Generated Title
+  ---TITLE_SEPARATOR---
+  <p>Generated HTML body starts here...</p>...
+  ---TAGS_SEPARATOR---
+  tag1, tag2, tag3
+claude_prompt: |
   You are an expert news editor. Your task is to generate a compelling news article title, a full HTML body, and relevant tags based on a Google Search Trend topic and related news snippets.
 
   The original search trend topic is: '%s'

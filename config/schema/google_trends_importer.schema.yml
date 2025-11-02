@@ -2,6 +2,10 @@ google_trends_importer.settings:
   type: config_object
   label: 'Google Trends Importer Settings'
   mapping:
+    ai_provider:
+      type: string
+      label: 'AI Provider'
+      description: 'The AI provider to use (openai or claude)'
     openai_api_key:
       type: string
       label: 'OpenAI API Key'
@@ -12,21 +16,36 @@ google_trends_importer.settings:
       type: text
       label: 'OpenAI Prompt Template'
       description: 'Template for generating article title, body, and tags.'
+    claude_api_key:
+      type: string
+      label: 'Claude API Key'
+    claude_model:
+      type: string
+      label: 'Claude Model Name'
+    claude_prompt:
+      type: text
+      label: 'Claude Prompt Template'
+      description: 'Template for generating article title, body, and tags.'
     content_type:
       type: string
       label: 'Content Type'
     image_field:
       type: string
       label: 'Image Field Name'
-    video_field:
-      type: string
-      label: 'Video Embed Field Name'
     tag_field:
       type: string
       label: 'Tag Field Name'
     tag_vocabulary:
       type: string
       label: 'Tag Vocabulary'
+    domain_id:
+      type: string
+      label: 'Domain ID'
+      description: 'The domain ID to assign to imported articles'
+    skip_domain_source:
+      type: boolean
+      label: 'Skip Domain Source'
+      description: 'If true, do not set the domain source field for imported articles'
     trends_url:
       type: string
       label: 'Google Trends RSS URL'

@@ -59,11 +59,29 @@ class SettingsForm extends ConfigFormBase {
   public function buildForm(array $form, FormStateInterface $form_state) {
     $config = $this->config('google_trends_importer.settings');
 
+    // AI Provider Selection
+    $form['ai_provider'] = [
+      '#type' => 'select',
+      '#title' => $this->t('AI Provider'),
+      '#description' => $this->t('Select which AI provider to use for article generation.'),
+      '#options' => [
+        'openai' => 'OpenAI (ChatGPT)',
+        'claude' => 'Anthropic Claude',
+      ],
+      '#default_value' => $config->get('ai_provider') ?: 'openai',
+      '#required' => TRUE,
+    ];
+
     // OpenAI Settings
     $form['openai_settings'] = [
       '#type' => 'details',
       '#title' => $this->t('OpenAI Settings'),
       '#open' => TRUE,
+      '#states' => [
+        'visible' => [
+          ':input[name="ai_provider"]' => ['value' => 'openai'],
+        ],
+      ],
     ];
 
     $form['openai_settings']['openai_api_key'] = [
@@ -98,6 +116,50 @@ class SettingsForm extends ConfigFormBase {
       '#description' => $this->t('Template for generating article title, body, and selecting tags. Use %s for placeholders: 1) trend title, 2) news content, 3) available tags (when vocabulary is selected). Include separators: ---TITLE_SEPARATOR--- (between title and body) and ---TAGS_SEPARATOR--- (between body and tags).'),
       '#rows' => 25,
       '#default_value' => $config->get('openai_prompt'),
+      '#required' => TRUE,
+    ];
+
+    // Claude Settings
+    $form['claude_settings'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Claude Settings'),
+      '#open' => TRUE,
+      '#states' => [
+        'visible' => [
+          ':input[name="ai_provider"]' => ['value' => 'claude'],
+        ],
+      ],
+    ];
+
+    $form['claude_settings']['claude_api_key'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Claude API Key'),
+      '#description' => $this->t('Enter your API key from Anthropic.'),
+      '#default_value' => $config->get('claude_api_key'),
+      '#maxlength' => 255,
+    ];
+
+    $form['claude_settings']['claude_model'] = [
+      '#type' => 'select',
+      '#title' => $this->t('Claude Model'),
+      '#description' => $this->t('Select the Claude model to use for content generation.'),
+      '#options' => [
+        'claude-3-5-sonnet-20241022' => 'Claude 3.5 Sonnet (Latest, best for most tasks)',
+        'claude-3-5-haiku-20241022' => 'Claude 3.5 Haiku (Fastest, most cost-effective)',
+        'claude-3-opus-20240229' => 'Claude 3 Opus (Most capable, highest cost)',
+        'claude-3-sonnet-20240229' => 'Claude 3 Sonnet (Balanced)',
+        'claude-3-haiku-20240307' => 'Claude 3 Haiku (Fast and efficient)',
+      ],
+      '#default_value' => $config->get('claude_model') ?: 'claude-3-5-sonnet-20241022',
+      '#required' => TRUE,
+    ];
+
+    $form['claude_settings']['claude_prompt'] = [
+      '#type' => 'textarea',
+      '#title' => $this->t('Claude Prompt Template'),
+      '#description' => $this->t('Template for generating article title, body, and selecting tags. Use %s for placeholders: 1) trend title, 2) news content, 3) available tags (when vocabulary is selected). Include separators: ---TITLE_SEPARATOR--- (between title and body) and ---TAGS_SEPARATOR--- (between body and tags).'),
+      '#rows' => 25,
+      '#default_value' => $config->get('claude_prompt'),
       '#required' => TRUE,
     ];
 
@@ -145,15 +207,6 @@ class SettingsForm extends ConfigFormBase {
       '#empty_option' => $this->t('- None -'),
     ];
 
-    $form['content_settings']['field_wrapper']['video_field'] = [
-      '#type' => 'select',
-      '#title' => $this->t('Video Embed Field'),
-      '#description' => $this->t('Select the video embed field (video_embed_field type). YouTube/Vimeo videos from articles will be embedded here.'),
-      '#options' => $field_options['video_embed'],
-      '#default_value' => $config->get('video_field'),
-      '#empty_option' => $this->t('- None -'),
-    ];
-
     $form['content_settings']['field_wrapper']['tag_field'] = [
       '#type' => 'select',
       '#title' => $this->t('Tag Field'),
@@ -184,6 +237,47 @@ class SettingsForm extends ConfigFormBase {
       '#default_value' => $config->get('tag_vocabulary'),
       '#empty_option' => $this->t('- None -'),
     ];
+
+    // Domain Settings
+    $form['domain_settings'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Domain Settings'),
+      '#open' => TRUE,
+    ];
+
+    // Check if Domain module is enabled
+    $domain_options = [];
+    if (\Drupal::moduleHandler()->moduleExists('domain')) {
+      $domain_storage = $this->entityTypeManager->getStorage('domain');
+      $domains = $domain_storage->loadMultiple();
+      foreach ($domains as $domain) {
+        $domain_options[$domain->id()] = $domain->label();
+      }
+    }
+
+    $form['domain_settings']['domain_id'] = [
+      '#type' => 'select',
+      '#title' => $this->t('Domain'),
+      '#description' => $this->t('Select the domain to assign all imported articles to. Leave empty to not assign any domain.'),
+      '#options' => $domain_options,
+      '#default_value' => $config->get('domain_id'),
+      '#empty_option' => $this->t('- None -'),
+      '#access' => !empty($domain_options),
+    ];
+
+    $form['domain_settings']['skip_domain_source'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Skip Domain Source'),
+      '#description' => $this->t('If checked, the domain source field will not be set for imported articles. Only domain access will be assigned.'),
+      '#default_value' => $config->get('skip_domain_source'),
+      '#access' => !empty($domain_options),
+    ];
+
+    if (empty($domain_options)) {
+      $form['domain_settings']['domain_warning'] = [
+        '#markup' => '<p>' . $this->t('The Domain module is not enabled or no domains are configured.') . '</p>',
+      ];
+    }
 
     // Trends Feed Settings
     $form['feed_settings'] = [
@@ -304,14 +398,19 @@ class SettingsForm extends ConfigFormBase {
    */
   public function submitForm(array &$form, FormStateInterface $form_state) {
     $this->config('google_trends_importer.settings')
+      ->set('ai_provider', $form_state->getValue('ai_provider'))
       ->set('openai_api_key', $form_state->getValue('openai_api_key'))
       ->set('openai_model', $form_state->getValue('openai_model'))
       ->set('openai_prompt', $form_state->getValue('openai_prompt'))
+      ->set('claude_api_key', $form_state->getValue('claude_api_key'))
+      ->set('claude_model', $form_state->getValue('claude_model'))
+      ->set('claude_prompt', $form_state->getValue('claude_prompt'))
       ->set('content_type', $form_state->getValue('content_type'))
       ->set('image_field', $form_state->getValue('image_field'))
-      ->set('video_field', $form_state->getValue('video_field'))
       ->set('tag_field', $form_state->getValue('tag_field'))
       ->set('tag_vocabulary', $form_state->getValue('tag_vocabulary'))
+      ->set('domain_id', $form_state->getValue('domain_id'))
+      ->set('skip_domain_source', (bool) $form_state->getValue('skip_domain_source'))
       ->set('trends_url', $form_state->getValue('trends_url'))
       ->set('min_traffic', $form_state->getValue('min_traffic'))
       ->set('max_trends', $form_state->getValue('max_trends'))

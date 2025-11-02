@@ -18,6 +18,7 @@ use Drupal\Core\Queue\SuspendQueueException;
 use Drupal\Core\File\FileSystemInterface;
 use DOMDocument;
 use DOMXPath;
+use GuzzleHttp\Exception\RequestException;
 
 /**
  * Processes a Trend Item from the queue.
@@ -51,8 +52,20 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
     'gpt-3.5-turbo-1106' => ['input' => 1.00, 'output' => 2.00, 'label' => 'GPT-3.5 Turbo 1106'],
   ];
 
+  /**
+   * Claude models with pricing per 1M tokens.
+   */
+  const CLAUDE_MODELS = [
+    'claude-3-5-sonnet-20241022' => ['input' => 3.00, 'output' => 15.00, 'label' => 'Claude 3.5 Sonnet (Latest)'],
+    'claude-3-5-haiku-20241022' => ['input' => 0.80, 'output' => 4.00, 'label' => 'Claude 3.5 Haiku (Fast)'],
+    'claude-3-opus-20240229' => ['input' => 15.00, 'output' => 75.00, 'label' => 'Claude 3 Opus'],
+    'claude-3-sonnet-20240229' => ['input' => 3.00, 'output' => 15.00, 'label' => 'Claude 3 Sonnet'],
+    'claude-3-haiku-20240307' => ['input' => 0.25, 'output' => 1.25, 'label' => 'Claude 3 Haiku'],
+  ];
+
   protected $database;
   protected $openAiClient;
+  protected $claudeApiKey;
   protected $httpClient;
   protected $logger;
   protected $entityTypeManager;
@@ -68,16 +81,18 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
     $plugin_id,
     $plugin_definition,
     Connection $database,
-    Client $openAiClient,
+    Client $openAiClient = NULL,
     ClientInterface $httpClient,
     LoggerChannelFactoryInterface $logger_factory,
     EntityTypeManagerInterface $entityTypeManager,
     FileRepositoryInterface $fileRepository,
-    ConfigFactoryInterface $configFactory
+    ConfigFactoryInterface $configFactory,
+    $claudeApiKey = NULL
   ) {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
     $this->database = $database;
     $this->openAiClient = $openAiClient;
+    $this->claudeApiKey = $claudeApiKey;
     $this->httpClient = $httpClient;
     $this->logger = $logger_factory->get('google_trends_importer');
     $this->entityTypeManager = $entityTypeManager;
@@ -92,19 +107,49 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
     $config_factory = $container->get('config.factory');
     $config = $config_factory->get('google_trends_importer.settings');
-    $api_key = $config->get('openai_api_key');
+    $ai_provider = $config->get('ai_provider') ?: 'openai';
 
     $openai_client = null;
-    if (!empty($api_key)) {
-      try {
-        $openai_client = \OpenAI::client($api_key);
-      } catch (\Exception $e) {
+    $claude_api_key = null;
+
+    if ($ai_provider === 'openai') {
+      // Check if OpenAI library is installed
+      if (!class_exists('\OpenAI')) {
         $container->get('logger.factory')->get('google_trends_importer')
-          ->error('Failed to create OpenAI client: @message', ['@message' => $e->getMessage()]);
+          ->error('OpenAI library is not installed. Please run: composer require openai-php/client');
+        return new static(
+          $configuration,
+          $plugin_id,
+          $plugin_definition,
+          $container->get('database'),
+          null,
+          $container->get('http_client'),
+          $container->get('logger.factory'),
+          $container->get('entity_type.manager'),
+          $container->get('file.repository'),
+          $config_factory,
+          null
+        );
       }
-    } else {
-      $container->get('logger.factory')->get('google_trends_importer')
-        ->warning('OpenAI API Key is not configured. OpenAI functionality will be disabled.');
+
+      $api_key = $config->get('openai_api_key');
+      if (!empty($api_key)) {
+        try {
+          $openai_client = \OpenAI::client($api_key);
+        } catch (\Exception $e) {
+          $container->get('logger.factory')->get('google_trends_importer')
+            ->error('Failed to create OpenAI client: @message', ['@message' => $e->getMessage()]);
+        }
+      } else {
+        $container->get('logger.factory')->get('google_trends_importer')
+          ->warning('OpenAI API Key is not configured. OpenAI functionality will be disabled.');
+      }
+    } elseif ($ai_provider === 'claude') {
+      $claude_api_key = $config->get('claude_api_key');
+      if (empty($claude_api_key)) {
+        $container->get('logger.factory')->get('google_trends_importer')
+          ->warning('Claude API Key is not configured. Claude functionality will be disabled.');
+      }
     }
 
     return new static(
@@ -117,7 +162,8 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       $container->get('logger.factory'),
       $container->get('entity_type.manager'),
       $container->get('file.repository'),
-      $config_factory
+      $config_factory,
+      $claude_api_key
     );
   }
 
@@ -129,8 +175,17 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
     $separator = '---TITLE_SEPARATOR---';
     $tags_separator = '---TAGS_SEPARATOR---';
 
-    if (!$this->openAiClient) {
+    // Get configuration
+    $config = $this->configFactory->get('google_trends_importer.settings');
+    $ai_provider = $config->get('ai_provider') ?: 'openai';
+
+    // Check if AI client is available
+    if ($ai_provider === 'openai' && !$this->openAiClient) {
       $this->logger->error('OpenAI client is not available (API Key missing or invalid?). Cannot process Trend ID @id.', ['@id' => $trend_id]);
+      return;
+    }
+    if ($ai_provider === 'claude' && empty($this->claudeApiKey)) {
+      $this->logger->error('Claude API key is not available. Cannot process Trend ID @id.', ['@id' => $trend_id]);
       return;
     }
 
@@ -176,51 +231,70 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       }
 
       // Get available tags from vocabulary
-      $config = $this->configFactory->get('google_trends_importer.settings');
       $available_tags = $this->getAvailableTags($config);
       $tags_list = !empty($available_tags) ? implode(', ', $available_tags) : 'No tags available';
 
-      $this->logger->info(sprintf('Sending Trend ID %d (%s) to OpenAI.', $trend->id, $trend->title));
-      
-      $prompt_template = $config->get('openai_prompt');
-      $model_name = $config->get('openai_model') ?: 'gpt-4o-mini';
+      // Get prompt template and model based on provider
+      if ($ai_provider === 'claude') {
+        $prompt_template = $config->get('claude_prompt');
+        $model_name = $config->get('claude_model') ?: 'claude-3-5-sonnet-20241022';
+        $provider_label = 'Claude';
+      } else {
+        $prompt_template = $config->get('openai_prompt');
+        $model_name = $config->get('openai_model') ?: 'gpt-4o-mini';
+        $provider_label = 'OpenAI';
+      }
 
       if (empty($prompt_template)) {
-        $this->logger->error('OpenAI Prompt Template is not configured. Cannot process Trend ID @id.', ['@id' => $trend_id]);
-        throw new \Exception('OpenAI Prompt Template is empty.');
+        $this->logger->error('@provider Prompt Template is not configured. Cannot process Trend ID @id.', [
+          '@provider' => $provider_label,
+          '@id' => $trend_id,
+        ]);
+        throw new \Exception($provider_label . ' Prompt Template is empty.');
       }
+
+      $this->logger->info(sprintf('Sending Trend ID %d (%s) to %s.', $trend->id, $trend->title, $provider_label));
 
       // Build the prompt with trend title, content, and tags
       $prompt = sprintf($prompt_template, $trend->title, $all_scraped_text, $tags_list);
-      
+
       // Log the full prompt to dblog for review
-      $this->logger->info('Sending prompt to OpenAI for Trend ID @id (@title). Full prompt logged below:', [
+      $this->logger->info('Sending prompt to @provider for Trend ID @id (@title). Full prompt logged below:', [
+        '@provider' => $provider_label,
         '@id' => $trend->id,
         '@title' => $trend->title,
       ]);
-      
+
       // Log full prompt in a separate entry for better readability
-      $this->logger->debug('Full OpenAI Prompt for Trend ID @id:<br><pre>@prompt</pre>', [
+      $this->logger->debug('Full @provider Prompt for Trend ID @id:<br><pre>@prompt</pre>', [
+        '@provider' => $provider_label,
         '@id' => $trend->id,
         '@prompt' => $prompt,
       ]);
 
       $start_time = microtime(true);
-      
-      $result = $this->openAiClient->chat()->create([
-        'model' => $model_name,
-        'messages' => [
-          ['role' => 'user', 'content' => $prompt],
-        ],
-      ]);
-      
-      $end_time = microtime(true);
-      $processing_cost = $this->calculateCost($result, $model_name);
 
-      $full_response = $result->choices[0]->message->content;
-      
+      // Call the appropriate AI provider
+      if ($ai_provider === 'claude') {
+        $result = $this->callClaudeApi($prompt, $model_name);
+        $full_response = $result['content'];
+        $processing_cost = $this->calculateClaudeCost($result, $model_name);
+      } else {
+        $result = $this->openAiClient->chat()->create([
+          'model' => $model_name,
+          'messages' => [
+            ['role' => 'user', 'content' => $prompt],
+          ],
+        ]);
+        $full_response = $result->choices[0]->message->content;
+        $processing_cost = $this->calculateCost($result, $model_name);
+      }
+
+      $end_time = microtime(true);
+
       // Log the full AI response
-      $this->logger->debug('Full OpenAI Response for Trend ID @id:<br><pre>@response</pre>', [
+      $this->logger->debug('Full @provider Response for Trend ID @id:<br><pre>@response</pre>', [
+        '@provider' => $provider_label,
         '@id' => $trend->id,
         '@response' => $full_response,
       ]);
@@ -340,6 +414,65 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
     $pricing = self::OPENAI_MODELS[$model_name];
     $input_tokens = $result->usage->promptTokens ?? 0;
     $output_tokens = $result->usage->completionTokens ?? 0;
+
+    $input_cost = ($input_tokens / 1000000) * $pricing['input'];
+    $output_cost = ($output_tokens / 1000000) * $pricing['output'];
+
+    return $input_cost + $output_cost;
+  }
+
+  /**
+   * Call Claude API.
+   */
+  protected function callClaudeApi($prompt, $model_name) {
+    try {
+      $response = $this->httpClient->request('POST', 'https://api.anthropic.com/v1/messages', [
+        'headers' => [
+          'x-api-key' => $this->claudeApiKey,
+          'anthropic-version' => '2023-06-01',
+          'content-type' => 'application/json',
+        ],
+        'json' => [
+          'model' => $model_name,
+          'max_tokens' => 4096,
+          'messages' => [
+            [
+              'role' => 'user',
+              'content' => $prompt,
+            ],
+          ],
+        ],
+        'timeout' => 120,
+      ]);
+
+      $body = json_decode((string) $response->getBody(), TRUE);
+
+      if (!isset($body['content'][0]['text'])) {
+        throw new \Exception('Invalid response from Claude API');
+      }
+
+      return [
+        'content' => $body['content'][0]['text'],
+        'usage' => $body['usage'] ?? [],
+      ];
+    } catch (RequestException $e) {
+      $this->logger->error('Claude API request failed: @message', ['@message' => $e->getMessage()]);
+      throw $e;
+    }
+  }
+
+  /**
+   * Calculate the cost of the Claude API call.
+   */
+  protected function calculateClaudeCost($result, $model_name) {
+    if (!isset(self::CLAUDE_MODELS[$model_name])) {
+      $this->logger->warning('Unknown Claude model @model for cost calculation', ['@model' => $model_name]);
+      return 0;
+    }
+
+    $pricing = self::CLAUDE_MODELS[$model_name];
+    $input_tokens = $result['usage']['input_tokens'] ?? 0;
+    $output_tokens = $result['usage']['output_tokens'] ?? 0;
 
     $input_cost = ($input_tokens / 1000000) * $pricing['input'];
     $output_cost = ($output_tokens / 1000000) * $pricing['output'];
@@ -657,14 +790,34 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
   private function createArticleNode($trend, $generated_title, $body_text, $tags, $config, $media) {
     $content_type = $config->get('content_type') ?: 'article';
     $image_field = $config->get('image_field') ?: 'field_image';
-    $video_field = $config->get('video_field');
     $tag_field = $config->get('tag_field');
-    
+
     $node_storage = $this->entityTypeManager->getStorage('node');
     $file_system = \Drupal::service('file_system');
-    
+
     // Generate slug for filenames
     $slug = $this->generateSlug($generated_title);
+
+    // Embed video in body if present
+    if (!empty($media['video'])) {
+      $video_url = $media['video'];
+      // Ensure the video URL is suitable for embedding
+      if (strpos($video_url, 'youtube.com') !== FALSE || strpos($video_url, 'youtu.be') !== FALSE || strpos($video_url, 'vimeo.com') !== FALSE) {
+        $video_embed = '<div class="embedded-video" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; margin: 20px 0;">';
+        $video_embed .= '<iframe src="' . htmlspecialchars($video_url, ENT_QUOTES, 'UTF-8') . '" ';
+        $video_embed .= 'style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" ';
+        $video_embed .= 'frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+        $video_embed .= '</div>';
+
+        // Add video embed at the beginning of the body
+        $body_text = $video_embed . "\n\n" . $body_text;
+
+        $this->logger->info('Embedded video @url in article body for Trend ID @id', [
+          '@url' => $video_url,
+          '@id' => $trend->id,
+        ]);
+      }
+    }
 
     $file_ids = [];
     
@@ -806,15 +959,6 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         '@id' => $trend->id,
       ]);
     }
-    
-    // Attach video if field exists
-    if (!empty($media['video']) && !empty($video_field) && $node->hasField($video_field)) {
-      $node->set($video_field, $media['video']);
-      $this->logger->info('Attached video @url to article for Trend ID @id', [
-        '@url' => $media['video'],
-        '@id' => $trend->id,
-      ]);
-    }
 
     // Attach tags if configured and available
     if (!empty($tag_field) && !empty($tags) && $node->hasField($tag_field)) {
@@ -823,6 +967,27 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         $node->set($tag_field, $tag_ids);
         $this->logger->info('Attached @count tags to article for Trend ID @id', [
           '@count' => count($tag_ids),
+          '@id' => $trend->id,
+        ]);
+      }
+    }
+
+    // Assign domain if configured and Domain module is enabled
+    $domain_id = $config->get('domain_id');
+    if (!empty($domain_id) && \Drupal::moduleHandler()->moduleExists('domain')) {
+      if ($node->hasField('field_domain_access')) {
+        $node->set('field_domain_access', [$domain_id]);
+        $this->logger->info('Assigned domain @domain to article for Trend ID @id', [
+          '@domain' => $domain_id,
+          '@id' => $trend->id,
+        ]);
+      }
+      // Set domain source if the field exists and skip_domain_source is not checked
+      $skip_domain_source = $config->get('skip_domain_source');
+      if (!$skip_domain_source && $node->hasField('field_domain_source')) {
+        $node->set('field_domain_source', $domain_id);
+        $this->logger->info('Set domain source @domain for Trend ID @id', [
+          '@domain' => $domain_id,
           '@id' => $trend->id,
         ]);
       }
