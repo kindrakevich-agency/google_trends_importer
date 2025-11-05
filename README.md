@@ -153,6 +153,7 @@ Shows when Claude is selected as provider.
 ### Content Type Settings
 
 * **Content Type**: Which type to create (default: Article)
+* **Assign Random Author**: If checked, articles will be assigned to a random user (excluding admin and anonymous). By default, articles are assigned to admin (uid 1).
 * **Image Field**: Where to attach images from articles and video thumbnails (AJAX updates on content type change)
 * **Tag Field**: Taxonomy field for auto-tagging (AJAX updates)
 

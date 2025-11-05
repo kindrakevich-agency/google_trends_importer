@@ -190,6 +190,13 @@ class SettingsForm extends ConfigFormBase {
       ],
     ];
 
+    $form['content_settings']['assign_random_author'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Assign Random Author'),
+      '#description' => $this->t('If checked, articles will be assigned to a random user (excluding admin and anonymous).'),
+      '#default_value' => $config->get('assign_random_author'),
+    ];
+
     $form['content_settings']['field_wrapper'] = [
       '#type' => 'container',
       '#attributes' => ['id' => 'field-options-wrapper'],
@@ -406,6 +413,7 @@ class SettingsForm extends ConfigFormBase {
       ->set('claude_model', $form_state->getValue('claude_model'))
       ->set('claude_prompt', $form_state->getValue('claude_prompt'))
       ->set('content_type', $form_state->getValue('content_type'))
+      ->set('assign_random_author', (bool) $form_state->getValue('assign_random_author'))
       ->set('image_field', $form_state->getValue('image_field'))
       ->set('tag_field', $form_state->getValue('tag_field'))
       ->set('tag_vocabulary', $form_state->getValue('tag_vocabulary'))
