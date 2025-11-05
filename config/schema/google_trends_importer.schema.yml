@@ -29,6 +29,10 @@ google_trends_importer.settings:
     content_type:
       type: string
       label: 'Content Type'
+    assign_random_author:
+      type: boolean
+      label: 'Assign Random Author'
+      description: 'If true, assign articles to a random user (excluding admin and anonymous)'
     image_field:
       type: string
       label: 'Image Field Name'

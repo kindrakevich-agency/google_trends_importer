@@ -939,11 +939,21 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       $created_timestamp = \Drupal::time()->getRequestTime();
     }
 
+    // Get random author if configured
+    $author_uid = 1; // Default to admin
+    if ($config->get('assign_random_author')) {
+      $random_uid = $this->getRandomUserId();
+      if ($random_uid) {
+        $author_uid = $random_uid;
+      }
+    }
+
     // Create node
     $node = $node_storage->create([
       'type' => $content_type,
       'title' => $generated_title,
       'status' => 1,
+      'uid' => $author_uid,
       'body' => [
         'value' => $body_text,
         'format' => 'full_html',
@@ -1040,6 +1050,39 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
     }
 
     return $tag_ids;
+  }
+
+  /**
+   * Get a random user ID excluding admin and anonymous.
+   *
+   * @return int|null
+   *   A random user ID, or NULL if no users found.
+   */
+  protected function getRandomUserId() {
+    try {
+      // Query for active users, excluding admin (uid 1) and anonymous (uid 0)
+      $query = $this->database->select('users_field_data', 'u')
+        ->fields('u', ['uid'])
+        ->condition('u.uid', [0, 1], 'NOT IN')
+        ->condition('u.status', 1);
+
+      $uids = $query->execute()->fetchCol();
+
+      if (empty($uids)) {
+        $this->logger->warning('No active users found for random author assignment (excluding admin and anonymous).');
+        return NULL;
+      }
+
+      // Pick a random user
+      $random_uid = $uids[array_rand($uids)];
+
+      $this->logger->info('Assigned random author with UID @uid', ['@uid' => $random_uid]);
+
+      return $random_uid;
+    } catch (\Exception $e) {
+      $this->logger->error('Failed to get random user ID: @message', ['@message' => $e->getMessage()]);
+      return NULL;
+    }
   }
 
 }

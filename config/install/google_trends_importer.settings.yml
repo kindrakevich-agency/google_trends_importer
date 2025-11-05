@@ -5,6 +5,7 @@ claude_api_key: ''
 claude_model: 'claude-3-5-sonnet-20241022'
 trends_url: 'https://trends.google.com/trending/rss?geo=US'
 content_type: 'article'
+assign_random_author: false
 image_field: 'field_image'
 tag_field: ''
 tag_vocabulary: ''
