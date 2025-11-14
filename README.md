@@ -105,9 +105,37 @@ drush pm:uninstall google_trends_importer -y && drush pm:enable google_trends_im
 
 Verify at `/admin/content/imported-trends`: Traffic shows "100K+", dates formatted, cost shows "$0.0050"
 
+## Admin Area
+
+The module provides a unified admin interface accessible from the main admin menu:
+
+**Main Menu:** Administration → Google Trends
+
+Or go directly to: `/admin/google-trends`
+
+The admin area has three tabs:
+- **Dashboard** - Analytics and statistics overview
+- **Trends** - View all imported trends in a table
+- **Settings** - Configure the module
+
+### Dashboard Analytics
+
+The dashboard provides real-time analytics:
+- **Total Trends** - Total number of trends imported
+- **Articles Created** - Successfully processed trends
+- **Pending** - Trends waiting to be processed
+- **This Month** - Trends imported this month
+- **Total Cost** - Cumulative AI processing costs
+- **Cost This Month** - AI costs for current month
+- **Avg Cost** - Average cost per article
+- **Recent Trends** - Last 5 imported trends with details
+- **Top Traffic Trends** - Highest traffic trends
+- **Current Configuration** - Quick overview of settings
+- **Quick Actions** - Fetch new trends or clear data
+
 ## Configuration
 
-Go to: `/admin/config/system/google-trends-importer`
+Go to: `/admin/google-trends/settings`
 
 ### AI Provider Selection
 
@@ -217,10 +245,25 @@ Leave domain empty to not assign any domain.
 
 ## Usage
 
-### View Imported Trends
-`/admin/content/imported-trends`
+### Access Admin Area
+`/admin/google-trends`
 
-Shows: Title, Traffic (K), Published, Imported, Cost, Article link
+The unified admin area provides three main sections:
+
+1. **Dashboard** (`/admin/google-trends`) - Analytics overview
+2. **Trends** (`/admin/google-trends/trends`) - View all imported trends
+3. **Settings** (`/admin/google-trends/settings`) - Configure module
+
+### Dashboard Features
+- Real-time statistics and analytics
+- Cost tracking and monitoring
+- Recent trends with quick links
+- Top traffic trends
+- Configuration overview
+- Quick action buttons
+
+### View Imported Trends
+The Trends tab shows: Title, Traffic (K), Published, Imported, Cost, Article link
 
 ### Review AI Prompts and Responses
 
@@ -438,4 +481,4 @@ GPL-2.0-or-later
 
 ---
 
-**Quick Start:** Enable module → Install domain module (optional) → Choose AI provider (OpenAI or Claude) → Add API key → Select model → Configure image/tag/domain fields → Configure vocabulary → Save → Click "Fetch Now" → Check `/admin/content/imported-trends` → Review articles with embedded videos and images!
+**Quick Start:** Enable module → Install domain module (optional) → Go to `/admin/google-trends` → Choose AI provider (OpenAI or Claude) → Add API key → Select model → Configure fields → Save → Click "Fetch New Trends" from dashboard → View analytics and articles!

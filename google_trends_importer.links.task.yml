@@ -1,0 +1,17 @@
+google_trends_importer.dashboard:
+  route_name: google_trends_importer.dashboard
+  title: 'Dashboard'
+  base_route: google_trends_importer.dashboard
+  weight: -10
+
+google_trends_importer.trends:
+  route_name: google_trends_importer.trends
+  title: 'Trends'
+  base_route: google_trends_importer.dashboard
+  weight: 0
+
+google_trends_importer.settings:
+  route_name: google_trends_importer.settings_form
+  title: 'Settings'
+  base_route: google_trends_importer.dashboard
+  weight: 10
