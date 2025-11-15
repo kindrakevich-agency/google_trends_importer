@@ -2,6 +2,10 @@ google_trends_importer.settings:
   type: config_object
   label: 'Google Trends Importer Settings'
   mapping:
+    import_enabled:
+      type: boolean
+      label: 'Import Enabled'
+      description: 'Global enable/disable for all Google Trends import activities'
     ai_provider:
       type: string
       label: 'AI Provider'

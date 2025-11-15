@@ -6,6 +6,7 @@ use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Database\Connection;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Url;
+use GuzzleHttp\ClientInterface;
 
 /**
  * Controller for the Google Trends Importer dashboard.
@@ -20,13 +21,23 @@ class DashboardController extends ControllerBase {
   protected $database;
 
   /**
+   * The HTTP client.
+   *
+   * @var \GuzzleHttp\ClientInterface
+   */
+  protected $httpClient;
+
+  /**
    * Constructs a DashboardController object.
    *
    * @param \Drupal\Core\Database\Connection $database
    *   The database connection.
+   * @param \GuzzleHttp\ClientInterface $http_client
+   *   The HTTP client.
    */
-  public function __construct(Connection $database) {
+  public function __construct(Connection $database, ClientInterface $http_client) {
     $this->database = $database;
+    $this->httpClient = $http_client;
   }
 
   /**
@@ -34,8 +45,103 @@ class DashboardController extends ControllerBase {
    */
   public static function create(ContainerInterface $container) {
     return new static(
-      $container->get('database')
+      $container->get('database'),
+      $container->get('http_client')
     );
+  }
+
+  /**
+   * Fetches the current balance from OpenAI API.
+   *
+   * @param string $api_key
+   *   The OpenAI API key.
+   *
+   * @return float|null
+   *   The balance amount or NULL if unable to fetch.
+   */
+  protected function getOpenAIBalance($api_key) {
+    if (empty($api_key)) {
+      return NULL;
+    }
+
+    try {
+      // Try to get subscription information
+      $response = $this->httpClient->request('GET', 'https://api.openai.com/v1/dashboard/billing/subscription', [
+        'headers' => [
+          'Authorization' => 'Bearer ' . $api_key,
+        ],
+        'timeout' => 5,
+      ]);
+
+      $data = json_decode($response->getBody()->getContents(), TRUE);
+
+      // If we have a hard_limit_usd, that's the total credit
+      if (isset($data['hard_limit_usd'])) {
+        // Now get the current usage
+        $start_date = date('Y-m-01'); // First day of current month
+        $end_date = date('Y-m-d'); // Today
+
+        $usage_response = $this->httpClient->request('GET', 'https://api.openai.com/v1/dashboard/billing/usage', [
+          'headers' => [
+            'Authorization' => 'Bearer ' . $api_key,
+          ],
+          'query' => [
+            'start_date' => $start_date,
+            'end_date' => $end_date,
+          ],
+          'timeout' => 5,
+        ]);
+
+        $usage_data = json_decode($usage_response->getBody()->getContents(), TRUE);
+        $used = isset($usage_data['total_usage']) ? $usage_data['total_usage'] / 100 : 0;
+
+        return max(0, $data['hard_limit_usd'] - $used);
+      }
+
+      return NULL;
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('google_trends_importer')->warning('Unable to fetch OpenAI balance: @message', ['@message' => $e->getMessage()]);
+      return NULL;
+    }
+  }
+
+  /**
+   * Fetches the current balance from Claude/Anthropic API.
+   *
+   * @param string $api_key
+   *   The Claude API key.
+   *
+   * @return float|null
+   *   The balance amount or NULL if unable to fetch.
+   */
+  protected function getClaudeBalance($api_key) {
+    if (empty($api_key)) {
+      return NULL;
+    }
+
+    try {
+      // Anthropic doesn't currently provide a public balance API endpoint
+      // This is a placeholder for when/if they add one
+      // For now, we'll return NULL and show "Not Available"
+
+      // If Anthropic adds a balance endpoint in the future, it would look like:
+      // $response = $this->httpClient->request('GET', 'https://api.anthropic.com/v1/account/balance', [
+      //   'headers' => [
+      //     'x-api-key' => $api_key,
+      //     'anthropic-version' => '2023-06-01',
+      //   ],
+      //   'timeout' => 5,
+      // ]);
+      // $data = json_decode($response->getBody()->getContents(), TRUE);
+      // return isset($data['balance']) ? $data['balance'] : NULL;
+
+      return NULL;
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('google_trends_importer')->warning('Unable to fetch Claude balance: @message', ['@message' => $e->getMessage()]);
+      return NULL;
+    }
   }
 
   /**
@@ -95,6 +201,17 @@ class DashboardController extends ControllerBase {
     $max_trends = $config->get('max_trends') ?: 5;
     $cron_enabled = $config->get('cron_enabled');
     $domain_id = $config->get('domain_id');
+
+    // Get API balance for current provider
+    $balance = NULL;
+    if ($ai_provider === 'openai') {
+      $api_key = $config->get('openai_api_key');
+      $balance = $this->getOpenAIBalance($api_key);
+    }
+    elseif ($ai_provider === 'claude') {
+      $api_key = $config->get('claude_api_key');
+      $balance = $this->getClaudeBalance($api_key);
+    }
 
     $build = [];
 
@@ -180,6 +297,26 @@ class DashboardController extends ControllerBase {
         '#markup' => '<div class="cost-number">$' . number_format($avg_cost, 4) . '</div><div class="cost-label">Avg Cost per Article</div>',
       ],
     ];
+
+    // API Balance card
+    if ($balance !== NULL) {
+      $build['costs']['balance'] = [
+        '#type' => 'container',
+        '#attributes' => ['class' => ['cost-card', 'cost-balance']],
+        'content' => [
+          '#markup' => '<div class="cost-number">$' . number_format($balance, 2) . '</div><div class="cost-label">API Balance (' . ucfirst($ai_provider) . ')</div>',
+        ],
+      ];
+    }
+    else {
+      $build['costs']['balance'] = [
+        '#type' => 'container',
+        '#attributes' => ['class' => ['cost-card', 'cost-balance']],
+        'content' => [
+          '#markup' => '<div class="cost-number">N/A</div><div class="cost-label">API Balance (' . ucfirst($ai_provider) . ')</div>',
+        ],
+      ];
+    }
 
     // Configuration overview
     $build['config_overview'] = [

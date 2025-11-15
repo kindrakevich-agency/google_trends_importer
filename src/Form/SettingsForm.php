@@ -59,6 +59,15 @@ class SettingsForm extends ConfigFormBase {
   public function buildForm(array $form, FormStateInterface $form_state) {
     $config = $this->config('google_trends_importer.settings');
 
+    // Global Enable/Disable
+    $form['import_enabled'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Enable Google Trends Import'),
+      '#description' => $this->t('If unchecked, all importing activities (cron and manual) will be disabled. No trends will be fetched or processed.'),
+      '#default_value' => $config->get('import_enabled') ?? TRUE,
+      '#weight' => -100,
+    ];
+
     // AI Provider Selection
     $form['ai_provider'] = [
       '#type' => 'select',
@@ -405,6 +414,7 @@ class SettingsForm extends ConfigFormBase {
    */
   public function submitForm(array &$form, FormStateInterface $form_state) {
     $this->config('google_trends_importer.settings')
+      ->set('import_enabled', (bool) $form_state->getValue('import_enabled'))
       ->set('ai_provider', $form_state->getValue('ai_provider'))
       ->set('openai_api_key', $form_state->getValue('openai_api_key'))
       ->set('openai_model', $form_state->getValue('openai_model'))

@@ -7,11 +7,13 @@ Automatically fetches daily Google Trends, scrapes related news articles with im
 ## Features
 
 * **Dual AI Provider Support** - Choose between OpenAI or Anthropic Claude 🆕
+* **Global Enable/Disable** - Master switch to control all importing activities 🆕
+* **API Balance Monitoring** - Real-time balance display from your AI provider 🆕
 * **Flexible Content Type Support** - Works with any content type
 * **AI-Powered Auto-Tagging** - AI selects relevant tags from your vocabulary
 * **Intelligent Image Extraction** - Downloads images from article bodies, sorted by resolution
 * **Video Embedding** - Extracts YouTube/Vimeo videos with automatic thumbnail generation
-* **Domain Assignment** - Automatically assign articles to Drupal Domain module domains 🆕
+* **Domain Assignment** - Automatically assign articles to Drupal Domain module domains
 * **Smart File Naming** - Images named using article slugs (e.g., `article-slug.jpg`, `article-slug-1.jpg`)
 * **Cost Tracking** - Tracks AI API costs per article (OpenAI & Claude)
 * **Traffic Filtering** - Only process trends above minimum threshold
@@ -128,6 +130,7 @@ The dashboard provides real-time analytics:
 - **Total Cost** - Cumulative AI processing costs
 - **Cost This Month** - AI costs for current month
 - **Avg Cost** - Average cost per article
+- **API Balance** 🆕 - Current balance from your AI provider (OpenAI or Claude). Automatically fetched based on your active provider. Shows "N/A" if balance cannot be retrieved.
 - **Recent Trends** - Last 5 imported trends with details
 - **Top Traffic Trends** - Highest traffic trends
 - **Current Configuration** - Quick overview of settings
@@ -213,6 +216,7 @@ Leave domain empty to not assign any domain.
 
 ### Feed Settings
 
+* **Enable Google Trends Import** 🆕: Global enable/disable switch. When unchecked, all importing activities (cron and manual) are disabled. No trends will be fetched or processed.
 * **RSS URL**: Default `https://trends.google.com/trending/rss?geo=US` (change `geo=` for other regions)
 * **Minimum Traffic**: Only process trends above this threshold (in thousands, e.g., 100 = 100K+)
 * **Maximum Trends**: Limit per cron run (default: 5, prevents timeouts)

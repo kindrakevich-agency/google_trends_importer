@@ -91,6 +91,14 @@ class ManualFetchForm extends ConfirmFormBase {
    * {@inheritdoc}
    */
   public function submitForm(array &$form, FormStateInterface $form_state) {
+    // Check if imports are globally enabled.
+    $config = \Drupal::config('google_trends_importer.settings');
+    if (!$config->get('import_enabled')) {
+      $this->messenger->addWarning($this->t('Google Trends Import is currently disabled. Please enable it in the settings to fetch trends.'));
+      $form_state->setRedirectUrl($this->getCancelUrl());
+      return;
+    }
+
     try {
       // Call the fetcher service method directly.
       $this->trendsFetcher->fetchAndSaveTrends();
