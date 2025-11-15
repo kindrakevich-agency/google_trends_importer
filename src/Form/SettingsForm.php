@@ -59,6 +59,15 @@ class SettingsForm extends ConfigFormBase {
   public function buildForm(array $form, FormStateInterface $form_state) {
     $config = $this->config('google_trends_importer.settings');
 
+    // Global Enable/Disable
+    $form['import_enabled'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Enable Google Trends Import'),
+      '#description' => $this->t('If unchecked, all importing activities (cron and manual) will be disabled. No trends will be fetched or processed.'),
+      '#default_value' => $config->get('import_enabled') ?? TRUE,
+      '#weight' => -100,
+    ];
+
     // AI Provider Selection
     $form['ai_provider'] = [
       '#type' => 'select',
@@ -301,6 +310,15 @@ class SettingsForm extends ConfigFormBase {
       '#maxlength' => 2048,
     ];
 
+    $form['feed_settings']['filtered_tlds'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Filtered TLDs'),
+      '#description' => $this->t('Comma-separated list of top-level domains to filter out. If any news item URL contains these TLDs, the trend will be skipped. Example: ru,cn,news'),
+      '#default_value' => $config->get('filtered_tlds'),
+      '#maxlength' => 500,
+      '#placeholder' => 'ru,cn,news',
+    ];
+
     $form['feed_settings']['min_traffic'] = [
       '#type' => 'number',
       '#title' => $this->t('Minimum Traffic'),
@@ -405,6 +423,7 @@ class SettingsForm extends ConfigFormBase {
    */
   public function submitForm(array &$form, FormStateInterface $form_state) {
     $this->config('google_trends_importer.settings')
+      ->set('import_enabled', (bool) $form_state->getValue('import_enabled'))
       ->set('ai_provider', $form_state->getValue('ai_provider'))
       ->set('openai_api_key', $form_state->getValue('openai_api_key'))
       ->set('openai_model', $form_state->getValue('openai_model'))
@@ -420,6 +439,7 @@ class SettingsForm extends ConfigFormBase {
       ->set('domain_id', $form_state->getValue('domain_id'))
       ->set('skip_domain_source', (bool) $form_state->getValue('skip_domain_source'))
       ->set('trends_url', $form_state->getValue('trends_url'))
+      ->set('filtered_tlds', $form_state->getValue('filtered_tlds'))
       ->set('min_traffic', $form_state->getValue('min_traffic'))
       ->set('max_trends', $form_state->getValue('max_trends'))
       ->set('cron_enabled', (bool) $form_state->getValue('cron_enabled'))

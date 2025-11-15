@@ -6,12 +6,14 @@ Automatically fetches daily Google Trends, scrapes related news articles with im
 
 ## Features
 
-* **Dual AI Provider Support** - Choose between OpenAI or Anthropic Claude 🆕
+* **Dual AI Provider Support** - Choose between OpenAI or Anthropic Claude
+* **Global Enable/Disable** - Master switch to control all importing activities
+* **TLD Filtering** - Filter out trends based on news source domains (e.g., .ru, .cn) 🆕
 * **Flexible Content Type Support** - Works with any content type
 * **AI-Powered Auto-Tagging** - AI selects relevant tags from your vocabulary
 * **Intelligent Image Extraction** - Downloads images from article bodies, sorted by resolution
 * **Video Embedding** - Extracts YouTube/Vimeo videos with automatic thumbnail generation
-* **Domain Assignment** - Automatically assign articles to Drupal Domain module domains 🆕
+* **Domain Assignment** - Automatically assign articles to Drupal Domain module domains
 * **Smart File Naming** - Images named using article slugs (e.g., `article-slug.jpg`, `article-slug-1.jpg`)
 * **Cost Tracking** - Tracks AI API costs per article (OpenAI & Claude)
 * **Traffic Filtering** - Only process trends above minimum threshold
@@ -105,9 +107,38 @@ drush pm:uninstall google_trends_importer -y && drush pm:enable google_trends_im
 
 Verify at `/admin/content/imported-trends`: Traffic shows "100K+", dates formatted, cost shows "$0.0050"
 
+## Admin Area
+
+The module provides a unified admin interface accessible from the main admin menu:
+
+**Main Menu:** Administration → Google Trends
+
+Or go directly to: `/admin/google-trends`
+
+The admin area has three tabs:
+- **Dashboard** - Analytics and statistics overview
+- **Trends** - View all imported trends in a table
+- **Settings** - Configure the module
+
+### Dashboard Analytics
+
+The dashboard provides real-time analytics:
+- **Total Trends** - Total number of trends imported
+- **Articles Created** - Successfully processed trends
+- **Pending** - Trends waiting to be processed
+- **This Month** - Trends imported this month
+- **Total Cost** - Cumulative AI processing costs
+- **Cost This Month** - AI costs for current month
+- **Avg Cost** - Average cost per article
+- **API Balance** - Shows "N/A" (OpenAI and Claude don't provide public billing APIs via regular API keys)
+- **Recent Trends** - Last 5 imported trends with details
+- **Top Traffic Trends** - Highest traffic trends
+- **Current Configuration** - Quick overview of settings
+- **Quick Actions** - Fetch new trends or clear data
+
 ## Configuration
 
-Go to: `/admin/config/system/google-trends-importer`
+Go to: `/admin/google-trends/settings`
 
 ### AI Provider Selection
 
@@ -185,7 +216,9 @@ Leave domain empty to not assign any domain.
 
 ### Feed Settings
 
+* **Enable Google Trends Import**: Global enable/disable switch. When unchecked, all importing activities (cron and manual) are disabled. No trends will be fetched or processed.
 * **RSS URL**: Default `https://trends.google.com/trending/rss?geo=US` (change `geo=` for other regions)
+* **Filtered TLDs** 🆕: Comma-separated list of top-level domains to filter out. If any news item URL contains these TLDs, the trend will be completely skipped (not saved or processed). Examples: `ru,cn,news` or `ru, cn, ir, kp`. Case-insensitive. Leave empty to allow all TLDs.
 * **Minimum Traffic**: Only process trends above this threshold (in thousands, e.g., 100 = 100K+)
 * **Maximum Trends**: Limit per cron run (default: 5, prevents timeouts)
 * **Enable Cron**: Auto-fetch on cron runs
@@ -196,6 +229,7 @@ Leave domain empty to not assign any domain.
 - Fetches Google Trends RSS feed
 - Parses traffic to integers
 - Filters by minimum traffic
+- Filters by TLD restrictions (checks all news item URLs) 🆕
 - Stops at max_trends limit
 - Saves to database and queues for processing
 
@@ -217,10 +251,25 @@ Leave domain empty to not assign any domain.
 
 ## Usage
 
-### View Imported Trends
-`/admin/content/imported-trends`
+### Access Admin Area
+`/admin/google-trends`
 
-Shows: Title, Traffic (K), Published, Imported, Cost, Article link
+The unified admin area provides three main sections:
+
+1. **Dashboard** (`/admin/google-trends`) - Analytics overview
+2. **Trends** (`/admin/google-trends/trends`) - View all imported trends
+3. **Settings** (`/admin/google-trends/settings`) - Configure module
+
+### Dashboard Features
+- Real-time statistics and analytics
+- Cost tracking and monitoring
+- Recent trends with quick links
+- Top traffic trends
+- Configuration overview
+- Quick action buttons
+
+### View Imported Trends
+The Trends tab shows: Title, Traffic (K), Published, Imported, Cost, Article link
 
 ### Review AI Prompts and Responses
 
@@ -438,4 +487,4 @@ GPL-2.0-or-later
 
 ---
 
-**Quick Start:** Enable module → Install domain module (optional) → Choose AI provider (OpenAI or Claude) → Add API key → Select model → Configure image/tag/domain fields → Configure vocabulary → Save → Click "Fetch Now" → Check `/admin/content/imported-trends` → Review articles with embedded videos and images!
+**Quick Start:** Enable module → Install domain module (optional) → Go to `/admin/google-trends` → Choose AI provider (OpenAI or Claude) → Add API key → Select model → Configure fields → Save → Click "Fetch New Trends" from dashboard → View analytics and articles!

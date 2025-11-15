@@ -12,6 +12,11 @@ function google_trends_importer_cron() {
   // Get the configuration.
   $config = \Drupal::config('google_trends_importer.settings');
 
+  // Check if imports are globally enabled.
+  if (!$config->get('import_enabled')) {
+    return;
+  }
+
   // Only run if cron processing is enabled in settings.
   if ($config->get('cron_enabled')) {
     // Get the fetcher service.

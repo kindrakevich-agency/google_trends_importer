@@ -38,10 +38,12 @@ class TrendsFetcher {
 
     $min_traffic = $this->config->get('min_traffic');
     $max_trends = $this->config->get('max_trends') ?: 5;
-    
+    $filtered_tlds = $this->config->get('filtered_tlds');
+
     $this->logger->info('Starting Google Trends import (max @max trends)...', ['@max' => $max_trends]);
     $import_count = 0;
     $skipped_count = 0;
+    $filtered_count = 0;
 
     try {
       $response = $this->httpClient->request('GET', $trends_url);
@@ -101,6 +103,12 @@ class TrendsFetcher {
         $title_string = (string) $item->title;
         $link_string = (string) $item->link;
 
+        // Check for filtered TLDs in news item URLs
+        if ($this->shouldFilterTrend($ht_children, $filtered_tlds)) {
+          $filtered_count++;
+          continue;
+        }
+
         // Check if this trend already exists
         $query = $this->database->select('google_trends_data', 'gtd')
           ->fields('gtd', ['id'])
@@ -151,14 +159,20 @@ class TrendsFetcher {
         if ($skipped_count > 0) {
           $message .= ' Skipped @skipped items due to minimum traffic threshold.';
         }
-        $this->logger->info($message, ['@count' => $import_count, '@skipped' => $skipped_count]);
+        if ($filtered_count > 0) {
+          $message .= ' Filtered @filtered items due to TLD restrictions.';
+        }
+        $this->logger->info($message, ['@count' => $import_count, '@skipped' => $skipped_count, '@filtered' => $filtered_count]);
       }
       else {
         $message = 'Google Trends import ran, but found no new items.';
         if ($skipped_count > 0) {
           $message .= ' @skipped items were skipped due to minimum traffic threshold.';
         }
-        $this->logger->info($message, ['@skipped' => $skipped_count]);
+        if ($filtered_count > 0) {
+          $message .= ' @filtered items were filtered due to TLD restrictions.';
+        }
+        $this->logger->info($message, ['@skipped' => $skipped_count, '@filtered' => $filtered_count]);
       }
 
     }
@@ -179,12 +193,12 @@ class TrendsFetcher {
   protected function parseTrafficToInt($traffic_string) {
     // Remove any whitespace
     $traffic_string = trim($traffic_string);
-    
+
     // Extract numeric part and multiplier
     if (preg_match('/^([0-9.]+)([KMB])?.*$/i', $traffic_string, $matches)) {
       $number = floatval($matches[1]);
       $multiplier = isset($matches[2]) ? strtoupper($matches[2]) : '';
-      
+
       switch ($multiplier) {
         case 'M':
           return (int) ($number * 1000); // Convert millions to thousands
@@ -195,7 +209,73 @@ class TrendsFetcher {
           return (int) $number; // Already in thousands
       }
     }
-    
+
     return 0;
+  }
+
+  /**
+   * Check if a trend should be filtered based on TLDs in news item URLs.
+   *
+   * @param \SimpleXMLElement $ht_children
+   *   The HT namespace children containing news_item elements.
+   * @param string|null $filtered_tlds
+   *   Comma-separated list of TLDs to filter.
+   *
+   * @return bool
+   *   TRUE if the trend should be filtered (skipped), FALSE otherwise.
+   */
+  protected function shouldFilterTrend($ht_children, $filtered_tlds) {
+    // If no TLDs are configured for filtering, don't filter anything
+    if (empty($filtered_tlds)) {
+      return FALSE;
+    }
+
+    // Parse the filtered TLDs into an array and trim whitespace
+    $tld_array = array_map('trim', explode(',', strtolower($filtered_tlds)));
+    $tld_array = array_filter($tld_array); // Remove empty values
+
+    if (empty($tld_array)) {
+      return FALSE;
+    }
+
+    // Get the namespace URI for news items
+    $namespaces = $ht_children->getNamespaces(TRUE);
+    $ht_ns_uri = $namespaces['ht'] ?? null;
+
+    if (!$ht_ns_uri) {
+      return FALSE;
+    }
+
+    // Check each news item URL
+    foreach ($ht_children->news_item as $news_item) {
+      $news_item_children = $news_item->children($ht_ns_uri);
+      $url = (string) $news_item_children->news_item_url;
+
+      if (empty($url)) {
+        continue;
+      }
+
+      // Parse the URL to get the host
+      $parsed = parse_url($url);
+      if (!isset($parsed['host'])) {
+        continue;
+      }
+
+      $host = strtolower($parsed['host']);
+
+      // Check if any filtered TLD matches
+      foreach ($tld_array as $tld) {
+        // Check if the host ends with the TLD (e.g., example.ru, news.example.ru)
+        if (substr($host, -strlen('.' . $tld)) === '.' . $tld || $host === $tld) {
+          $this->logger->info('Filtering trend due to TLD "@tld" in URL: @url', [
+            '@tld' => $tld,
+            '@url' => $url,
+          ]);
+          return TRUE;
+        }
+      }
+    }
+
+    return FALSE;
   }
 }
