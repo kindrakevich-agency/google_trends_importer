@@ -6,16 +6,6 @@ google_trends_importer.dashboard:
   requirements:
     _permission: 'administer site configuration'
 
-google_trends_importer.trends:
-  path: '/admin/google-trends/trends'
-  defaults:
-    _controller: '\Drupal\views\Routing\ViewPageController::handle'
-    view_id: 'imported_trends'
-    display_id: 'page_1'
-    _title: 'Trends'
-  requirements:
-    _permission: 'access administration pages'
-
 google_trends_importer.settings_form:
   path: '/admin/google-trends/settings'
   defaults:

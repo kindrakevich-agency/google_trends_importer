@@ -5,7 +5,7 @@ google_trends_importer.dashboard:
   weight: -10
 
 google_trends_importer.trends:
-  route_name: google_trends_importer.trends
+  route_name: view.imported_trends.page_1
   title: 'Trends'
   base_route: google_trends_importer.dashboard
   weight: 0
