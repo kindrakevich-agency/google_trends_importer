@@ -64,46 +64,12 @@ class DashboardController extends ControllerBase {
       return NULL;
     }
 
-    try {
-      // Try to get subscription information
-      $response = $this->httpClient->request('GET', 'https://api.openai.com/v1/dashboard/billing/subscription', [
-        'headers' => [
-          'Authorization' => 'Bearer ' . $api_key,
-        ],
-        'timeout' => 5,
-      ]);
+    // OpenAI's billing/subscription endpoints require session keys (not API keys)
+    // and are only available through their web dashboard.
+    // Regular API keys do not have access to billing information.
+    // Returning NULL to show "N/A" in the dashboard.
 
-      $data = json_decode($response->getBody()->getContents(), TRUE);
-
-      // If we have a hard_limit_usd, that's the total credit
-      if (isset($data['hard_limit_usd'])) {
-        // Now get the current usage
-        $start_date = date('Y-m-01'); // First day of current month
-        $end_date = date('Y-m-d'); // Today
-
-        $usage_response = $this->httpClient->request('GET', 'https://api.openai.com/v1/dashboard/billing/usage', [
-          'headers' => [
-            'Authorization' => 'Bearer ' . $api_key,
-          ],
-          'query' => [
-            'start_date' => $start_date,
-            'end_date' => $end_date,
-          ],
-          'timeout' => 5,
-        ]);
-
-        $usage_data = json_decode($usage_response->getBody()->getContents(), TRUE);
-        $used = isset($usage_data['total_usage']) ? $usage_data['total_usage'] / 100 : 0;
-
-        return max(0, $data['hard_limit_usd'] - $used);
-      }
-
-      return NULL;
-    }
-    catch (\Exception $e) {
-      \Drupal::logger('google_trends_importer')->warning('Unable to fetch OpenAI balance: @message', ['@message' => $e->getMessage()]);
-      return NULL;
-    }
+    return NULL;
   }
 
   /**

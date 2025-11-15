@@ -8,7 +8,6 @@ Automatically fetches daily Google Trends, scrapes related news articles with im
 
 * **Dual AI Provider Support** - Choose between OpenAI or Anthropic Claude
 * **Global Enable/Disable** - Master switch to control all importing activities
-* **API Balance Monitoring** - Real-time balance display from your AI provider
 * **TLD Filtering** - Filter out trends based on news source domains (e.g., .ru, .cn) 🆕
 * **Flexible Content Type Support** - Works with any content type
 * **AI-Powered Auto-Tagging** - AI selects relevant tags from your vocabulary
@@ -131,7 +130,7 @@ The dashboard provides real-time analytics:
 - **Total Cost** - Cumulative AI processing costs
 - **Cost This Month** - AI costs for current month
 - **Avg Cost** - Average cost per article
-- **API Balance** 🆕 - Current balance from your AI provider (OpenAI or Claude). Automatically fetched based on your active provider. Shows "N/A" if balance cannot be retrieved.
+- **API Balance** - Shows "N/A" (OpenAI and Claude don't provide public billing APIs via regular API keys)
 - **Recent Trends** - Last 5 imported trends with details
 - **Top Traffic Trends** - Highest traffic trends
 - **Current Configuration** - Quick overview of settings
