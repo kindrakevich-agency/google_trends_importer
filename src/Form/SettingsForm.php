@@ -310,6 +310,15 @@ class SettingsForm extends ConfigFormBase {
       '#maxlength' => 2048,
     ];
 
+    $form['feed_settings']['filtered_tlds'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Filtered TLDs'),
+      '#description' => $this->t('Comma-separated list of top-level domains to filter out. If any news item URL contains these TLDs, the trend will be skipped. Example: ru,cn,news'),
+      '#default_value' => $config->get('filtered_tlds'),
+      '#maxlength' => 500,
+      '#placeholder' => 'ru,cn,news',
+    ];
+
     $form['feed_settings']['min_traffic'] = [
       '#type' => 'number',
       '#title' => $this->t('Minimum Traffic'),
@@ -430,6 +439,7 @@ class SettingsForm extends ConfigFormBase {
       ->set('domain_id', $form_state->getValue('domain_id'))
       ->set('skip_domain_source', (bool) $form_state->getValue('skip_domain_source'))
       ->set('trends_url', $form_state->getValue('trends_url'))
+      ->set('filtered_tlds', $form_state->getValue('filtered_tlds'))
       ->set('min_traffic', $form_state->getValue('min_traffic'))
       ->set('max_trends', $form_state->getValue('max_trends'))
       ->set('cron_enabled', (bool) $form_state->getValue('cron_enabled'))

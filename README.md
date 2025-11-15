@@ -6,9 +6,10 @@ Automatically fetches daily Google Trends, scrapes related news articles with im
 
 ## Features
 
-* **Dual AI Provider Support** - Choose between OpenAI or Anthropic Claude 🆕
-* **Global Enable/Disable** - Master switch to control all importing activities 🆕
-* **API Balance Monitoring** - Real-time balance display from your AI provider 🆕
+* **Dual AI Provider Support** - Choose between OpenAI or Anthropic Claude
+* **Global Enable/Disable** - Master switch to control all importing activities
+* **API Balance Monitoring** - Real-time balance display from your AI provider
+* **TLD Filtering** - Filter out trends based on news source domains (e.g., .ru, .cn) 🆕
 * **Flexible Content Type Support** - Works with any content type
 * **AI-Powered Auto-Tagging** - AI selects relevant tags from your vocabulary
 * **Intelligent Image Extraction** - Downloads images from article bodies, sorted by resolution
@@ -216,8 +217,9 @@ Leave domain empty to not assign any domain.
 
 ### Feed Settings
 
-* **Enable Google Trends Import** 🆕: Global enable/disable switch. When unchecked, all importing activities (cron and manual) are disabled. No trends will be fetched or processed.
+* **Enable Google Trends Import**: Global enable/disable switch. When unchecked, all importing activities (cron and manual) are disabled. No trends will be fetched or processed.
 * **RSS URL**: Default `https://trends.google.com/trending/rss?geo=US` (change `geo=` for other regions)
+* **Filtered TLDs** 🆕: Comma-separated list of top-level domains to filter out. If any news item URL contains these TLDs, the trend will be completely skipped (not saved or processed). Examples: `ru,cn,news` or `ru, cn, ir, kp`. Case-insensitive. Leave empty to allow all TLDs.
 * **Minimum Traffic**: Only process trends above this threshold (in thousands, e.g., 100 = 100K+)
 * **Maximum Trends**: Limit per cron run (default: 5, prevents timeouts)
 * **Enable Cron**: Auto-fetch on cron runs
@@ -228,6 +230,7 @@ Leave domain empty to not assign any domain.
 - Fetches Google Trends RSS feed
 - Parses traffic to integers
 - Filters by minimum traffic
+- Filters by TLD restrictions (checks all news item URLs) 🆕
 - Stops at max_trends limit
 - Saves to database and queues for processing
 

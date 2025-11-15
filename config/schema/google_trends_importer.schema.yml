@@ -57,6 +57,10 @@ google_trends_importer.settings:
     trends_url:
       type: string
       label: 'Google Trends RSS URL'
+    filtered_tlds:
+      type: string
+      label: 'Filtered TLDs'
+      description: 'Comma-separated list of TLDs to filter out'
     min_traffic:
       type: integer
       label: 'Minimum Traffic Threshold'
