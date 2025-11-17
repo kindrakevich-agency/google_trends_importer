@@ -1008,12 +1008,12 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
   }
 
   /**
-   * Get or create taxonomy term IDs for the given tag names.
+   * Get taxonomy term IDs for the given tag names (only existing tags).
    */
   protected function getOrCreateTagIds($tag_names, $config) {
     $tag_ids = [];
     $vocab_id = $config->get('tag_vocabulary');
-    
+
     if (empty($vocab_id)) {
       return $tag_ids;
     }
@@ -1031,21 +1031,8 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         $term = reset($terms);
         $tag_ids[] = ['target_id' => $term->id()];
       } else {
-        // Create new term if it doesn't exist
-        try {
-          $term = $term_storage->create([
-            'name' => $tag_name,
-            'vid' => $vocab_id,
-          ]);
-          $term->save();
-          $tag_ids[] = ['target_id' => $term->id()];
-          $this->logger->info('Created new tag: @tag', ['@tag' => $tag_name]);
-        } catch (\Exception $e) {
-          $this->logger->warning('Failed to create tag "@tag": @message', [
-            '@tag' => $tag_name,
-            '@message' => $e->getMessage(),
-          ]);
-        }
+        // Skip tags that don't exist - do NOT create new ones
+        $this->logger->info('Skipping non-existent tag: @tag', ['@tag' => $tag_name]);
       }
     }
 
