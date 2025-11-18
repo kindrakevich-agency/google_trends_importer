@@ -130,7 +130,6 @@ The dashboard provides real-time analytics:
 - **Total Cost** - Cumulative AI processing costs
 - **Cost This Month** - AI costs for current month
 - **Avg Cost** - Average cost per article
-- **API Balance** - Shows "N/A" (OpenAI and Claude don't provide public billing APIs via regular API keys)
 - **Recent Trends** - Last 5 imported trends with details
 - **Top Traffic Trends** - Highest traffic trends
 - **Current Configuration** - Quick overview of settings
@@ -200,7 +199,7 @@ Shows when Claude is selected as provider.
 
 ### Taxonomy Settings
 
-**Tag Vocabulary**: Select vocabulary for auto-tagging. The AI will receive all terms from this vocabulary and select the most relevant ones for each article.
+**Tag Vocabulary**: Select vocabulary for auto-tagging. The AI will receive all terms from this vocabulary and select the most relevant ones for each article. **Important**: The module will ONLY use existing taxonomy terms. It will NOT create new terms. If the AI selects a tag that doesn't exist in your vocabulary, it will be skipped and logged.
 
 ### Domain Settings 🆕
 
@@ -243,9 +242,9 @@ Leave domain empty to not assign any domain.
 - Sends to OpenAI or Claude with complete prompt
 - Calculates and stores cost
 - Parses response (title, body, tags)
-- **Embeds video in article body HTML if found** 🆕
+- **Embeds video in article body HTML if found**
 - **Downloads and attaches all images with slug-based naming**
-- Creates/finds taxonomy terms
+- Attaches only existing taxonomy terms (does NOT create new ones)
 - **Assigns to selected domain if configured**
 - Creates published article node with all fields
 

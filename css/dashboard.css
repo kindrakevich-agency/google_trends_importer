@@ -63,16 +63,6 @@
   border-left: 4px solid #0066cc;
 }
 
-.cost-card.cost-balance {
-  background: #d4edda;
-  border-color: #28a745;
-  border-left: 4px solid #28a745;
-}
-
-.cost-card.cost-balance .cost-number {
-  color: #28a745;
-}
-
 .cost-number {
   font-size: 28px;
   font-weight: bold;
