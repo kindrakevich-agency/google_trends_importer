@@ -977,7 +977,7 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
     // Attach tags if configured and available
     if (!empty($tag_field) && !empty($tags) && $node->hasField($tag_field)) {
-      $tag_ids = $this->getOrCreateTagIds($tags, $config);
+      $tag_ids = $this->getExistingTagIds($tags, $config);
       if (!empty($tag_ids)) {
         $node->set($tag_field, $tag_ids);
         $this->logger->info('Attached @count tags to article for Trend ID @id', [
@@ -1013,9 +1013,21 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
   }
 
   /**
-   * Get taxonomy term IDs for the given tag names (only existing tags).
+   * Get taxonomy term IDs for existing tags ONLY.
+   *
+   * IMPORTANT: This method NEVER creates new taxonomy terms.
+   * Only existing terms from the vocabulary are used.
+   * Non-existent tags are skipped and logged.
+   *
+   * @param array $tag_names
+   *   Array of tag names to look up.
+   * @param \Drupal\Core\Config\ImmutableConfig $config
+   *   The module configuration.
+   *
+   * @return array
+   *   Array of term reference arrays for existing terms only.
    */
-  protected function getOrCreateTagIds($tag_names, $config) {
+  protected function getExistingTagIds($tag_names, $config) {
     $tag_ids = [];
     $vocab_id = $config->get('tag_vocabulary');
 
@@ -1026,18 +1038,19 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
     $term_storage = $this->entityTypeManager->getStorage('taxonomy_term');
 
     foreach ($tag_names as $tag_name) {
-      // Try to find existing term
+      // Try to find existing term - NEVER CREATE NEW ONES
       $terms = $term_storage->loadByProperties([
         'name' => $tag_name,
         'vid' => $vocab_id,
       ]);
 
       if (!empty($terms)) {
+        // Term exists - use it
         $term = reset($terms);
         $tag_ids[] = ['target_id' => $term->id()];
       } else {
-        // Skip tags that don't exist - do NOT create new ones
-        $this->logger->info('Skipping non-existent tag: @tag', ['@tag' => $tag_name]);
+        // Term does NOT exist - skip it (do NOT create)
+        $this->logger->info('Skipping non-existent tag "@tag" - only existing terms are used', ['@tag' => $tag_name]);
       }
     }
 
@@ -1108,11 +1121,11 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
     // Get AI provider settings
     $ai_provider = $config->get('ai_provider') ?: 'openai';
 
-    // Get tag IDs for reuse in translations
+    // Get tag IDs for reuse in translations (ONLY existing terms)
     $tag_field = $config->get('tag_field');
     $tag_ids = [];
     if (!empty($tag_field) && !empty($tags) && $node->hasField($tag_field)) {
-      $tag_ids = $this->getOrCreateTagIds($tags, $config);
+      $tag_ids = $this->getExistingTagIds($tags, $config);
     }
 
     foreach ($translation_languages as $langcode) {
