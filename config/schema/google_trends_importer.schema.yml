@@ -54,6 +54,17 @@ google_trends_importer.settings:
       type: boolean
       label: 'Skip Domain Source'
       description: 'If true, do not set the domain source field for imported articles'
+    translation_enabled:
+      type: boolean
+      label: 'Translation Enabled'
+      description: 'If true, articles will be automatically translated to selected languages'
+    translation_languages:
+      type: sequence
+      label: 'Translation Languages'
+      description: 'Array of language codes to translate articles into'
+      sequence:
+        type: string
+        label: 'Language code'
     trends_url:
       type: string
       label: 'Google Trends RSS URL'
