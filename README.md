@@ -7,8 +7,9 @@ Automatically fetches daily Google Trends, scrapes related news articles with im
 ## Features
 
 * **Dual AI Provider Support** - Choose between OpenAI or Anthropic Claude
+* **AI Translation** - Automatically translate articles to multiple languages using AI 🆕
 * **Global Enable/Disable** - Master switch to control all importing activities
-* **TLD Filtering** - Filter out trends based on news source domains (e.g., .ru, .cn) 🆕
+* **TLD Filtering** - Filter out trends based on news source domains (e.g., .ru, .cn)
 * **Flexible Content Type Support** - Works with any content type
 * **AI-Powered Auto-Tagging** - AI selects relevant tags from your vocabulary
 * **Intelligent Image Extraction** - Downloads images from article bodies, sorted by resolution
@@ -213,6 +214,25 @@ The module can set:
 
 Leave domain empty to not assign any domain.
 
+### Translation Settings 🆕
+
+**Enable AI Translation** (checkbox): Enable automatic translation of articles to multiple languages using AI.
+
+**Languages to Translate** (checkboxes): Select which languages to automatically translate articles into. The original article is created in the site's default language first, then AI translates it to each selected language.
+
+**How It Works:**
+- After creating the original article, the module uses your configured AI provider (OpenAI or Claude) to translate the title and body
+- Each translation is created as a proper Drupal content translation
+- Taxonomy terms are automatically attached to all translations (same tags across all languages)
+- HTML formatting is preserved during translation
+- Translations are logged for debugging
+
+**Requirements:**
+- Additional languages must be configured in Drupal: Configuration → Regional → Languages
+- Content Translation must be enabled for your content type: Configuration → Regional → Content Language
+
+**Note:** Translation adds additional AI API costs (one API call per language per article).
+
 ### Feed Settings
 
 * **Enable Google Trends Import**: Global enable/disable switch. When unchecked, all importing activities (cron and manual) are disabled. No trends will be fetched or processed.
@@ -247,6 +267,11 @@ Leave domain empty to not assign any domain.
 - Attaches only existing taxonomy terms (does NOT create new ones)
 - **Assigns to selected domain if configured**
 - Creates published article node with all fields
+- **Translates article to enabled languages using AI** 🆕
+  - For each enabled language, sends title and body to AI for translation
+  - Creates proper Drupal content translations
+  - Attaches same taxonomy terms to all translations
+  - Preserves HTML formatting
 
 ## Usage
 

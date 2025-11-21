@@ -314,6 +314,11 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       
       $node_id = $this->createArticleNode($trend, $parsed['title'], $parsed['body'], $parsed['tags'], $config, $media);
 
+      // Translate article if translation is enabled
+      if ($config->get('translation_enabled')) {
+        $this->translateArticle($node_id, $parsed['title'], $parsed['body'], $parsed['tags'], $config);
+      }
+
       // Update trend record with processing info
       $this->database->update('google_trends_data')
         ->fields([
@@ -972,7 +977,7 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
     // Attach tags if configured and available
     if (!empty($tag_field) && !empty($tags) && $node->hasField($tag_field)) {
-      $tag_ids = $this->getOrCreateTagIds($tags, $config);
+      $tag_ids = $this->getExistingTagIds($tags, $config);
       if (!empty($tag_ids)) {
         $node->set($tag_field, $tag_ids);
         $this->logger->info('Attached @count tags to article for Trend ID @id', [
@@ -1008,9 +1013,21 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
   }
 
   /**
-   * Get taxonomy term IDs for the given tag names (only existing tags).
+   * Get taxonomy term IDs for existing tags ONLY.
+   *
+   * IMPORTANT: This method NEVER creates new taxonomy terms.
+   * Only existing terms from the vocabulary are used.
+   * Non-existent tags are skipped and logged.
+   *
+   * @param array $tag_names
+   *   Array of tag names to look up.
+   * @param \Drupal\Core\Config\ImmutableConfig $config
+   *   The module configuration.
+   *
+   * @return array
+   *   Array of term reference arrays for existing terms only.
    */
-  protected function getOrCreateTagIds($tag_names, $config) {
+  protected function getExistingTagIds($tag_names, $config) {
     $tag_ids = [];
     $vocab_id = $config->get('tag_vocabulary');
 
@@ -1021,18 +1038,19 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
     $term_storage = $this->entityTypeManager->getStorage('taxonomy_term');
 
     foreach ($tag_names as $tag_name) {
-      // Try to find existing term
+      // Try to find existing term - NEVER CREATE NEW ONES
       $terms = $term_storage->loadByProperties([
         'name' => $tag_name,
         'vid' => $vocab_id,
       ]);
 
       if (!empty($terms)) {
+        // Term exists - use it
         $term = reset($terms);
         $tag_ids[] = ['target_id' => $term->id()];
       } else {
-        // Skip tags that don't exist - do NOT create new ones
-        $this->logger->info('Skipping non-existent tag: @tag', ['@tag' => $tag_name]);
+        // Term does NOT exist - skip it (do NOT create)
+        $this->logger->info('Skipping non-existent tag "@tag" - only existing terms are used', ['@tag' => $tag_name]);
       }
     }
 
@@ -1070,6 +1088,146 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       $this->logger->error('Failed to get random user ID: @message', ['@message' => $e->getMessage()]);
       return NULL;
     }
+  }
+
+  /**
+   * Translate article to enabled languages using AI.
+   *
+   * @param int $node_id
+   *   The node ID to translate.
+   * @param string $original_title
+   *   The original title.
+   * @param string $original_body
+   *   The original body.
+   * @param array $tags
+   *   The tags array.
+   * @param \Drupal\Core\Config\ImmutableConfig $config
+   *   The module configuration.
+   */
+  protected function translateArticle($node_id, $original_title, $original_body, $tags, $config) {
+    $translation_languages = $config->get('translation_languages');
+
+    if (empty($translation_languages)) {
+      return;
+    }
+
+    // Load the original node
+    $node = $this->entityTypeManager->getStorage('node')->load($node_id);
+    if (!$node) {
+      $this->logger->error('Failed to load node @nid for translation', ['@nid' => $node_id]);
+      return;
+    }
+
+    // Get AI provider settings
+    $ai_provider = $config->get('ai_provider') ?: 'openai';
+
+    // Get tag IDs for reuse in translations (ONLY existing terms)
+    $tag_field = $config->get('tag_field');
+    $tag_ids = [];
+    if (!empty($tag_field) && !empty($tags) && $node->hasField($tag_field)) {
+      $tag_ids = $this->getExistingTagIds($tags, $config);
+    }
+
+    foreach ($translation_languages as $langcode) {
+      if (!$langcode) {
+        continue;
+      }
+
+      try {
+        $this->logger->info('Translating node @nid to @lang', [
+          '@nid' => $node_id,
+          '@lang' => $langcode,
+        ]);
+
+        // Get language name for the prompt
+        $language_manager = \Drupal::languageManager();
+        $language = $language_manager->getLanguage($langcode);
+        $language_name = $language ? $language->getName() : $langcode;
+
+        // Create translation prompt
+        $translation_prompt = sprintf(
+          "Translate the following article to %s. Maintain the HTML formatting in the body.\n\nTitle: %s\n\nBody:\n%s\n\nProvide the translation in this exact format:\nTranslated Title\n---TITLE_SEPARATOR---\nTranslated Body (with HTML)",
+          $language_name,
+          $original_title,
+          $original_body
+        );
+
+        // Call AI to translate
+        if ($ai_provider === 'openai') {
+          $model_name = $config->get('openai_model') ?: 'gpt-4o-mini';
+          $translated_response = $this->callOpenAI($translation_prompt, $model_name);
+        } else {
+          $model_name = $config->get('claude_model') ?: 'claude-3-5-sonnet-20241022';
+          $translated_response = $this->callClaudeApi($translation_prompt, $model_name);
+        }
+
+        // Parse the translated response
+        $separator = '---TITLE_SEPARATOR---';
+        $translated_data = $this->parseTranslationResponse($translated_response, $separator, $original_title, $original_body);
+
+        // Create translation
+        if (!$node->hasTranslation($langcode)) {
+          $translation = $node->addTranslation($langcode, [
+            'title' => $translated_data['title'],
+            'body' => [
+              'value' => $translated_data['body'],
+              'format' => 'full_html',
+            ],
+          ]);
+
+          // Attach same taxonomy terms to translation
+          if (!empty($tag_field) && !empty($tag_ids) && $translation->hasField($tag_field)) {
+            $translation->set($tag_field, $tag_ids);
+          }
+
+          $translation->save();
+
+          $this->logger->info('Created translation for node @nid in @lang', [
+            '@nid' => $node_id,
+            '@lang' => $langcode,
+          ]);
+        }
+
+      } catch (\Exception $e) {
+        $this->logger->error('Failed to translate node @nid to @lang: @message', [
+          '@nid' => $node_id,
+          '@lang' => $langcode,
+          '@message' => $e->getMessage(),
+        ]);
+      }
+    }
+  }
+
+  /**
+   * Parse translation response from AI.
+   *
+   * @param string $response
+   *   The AI response.
+   * @param string $separator
+   *   The separator string.
+   * @param string $fallback_title
+   *   Fallback title if parsing fails.
+   * @param string $fallback_body
+   *   Fallback body if parsing fails.
+   *
+   * @return array
+   *   Array with 'title' and 'body' keys.
+   */
+  protected function parseTranslationResponse($response, $separator, $fallback_title, $fallback_body) {
+    $result = [
+      'title' => $fallback_title,
+      'body' => $fallback_body,
+    ];
+
+    if (strpos($response, $separator) !== FALSE) {
+      $parts = explode($separator, $response, 2);
+      $result['title'] = trim($parts[0]);
+      if (isset($parts[1])) {
+        $result['body'] = trim($parts[1]);
+      }
+    }
+
+    return $result;
   }
 
 }

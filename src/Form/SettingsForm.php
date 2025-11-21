@@ -295,6 +295,54 @@ class SettingsForm extends ConfigFormBase {
       ];
     }
 
+    // Translation Settings
+    $form['translation_settings'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Translation Settings'),
+      '#open' => TRUE,
+    ];
+
+    $form['translation_settings']['translation_enabled'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Enable AI Translation'),
+      '#description' => $this->t('If checked, articles will be automatically translated to selected languages using AI after creation.'),
+      '#default_value' => $config->get('translation_enabled'),
+    ];
+
+    // Get available languages
+    $language_manager = \Drupal::languageManager();
+    $languages = $language_manager->getLanguages();
+    $language_options = [];
+    $default_langcode = $language_manager->getDefaultLanguage()->getId();
+
+    foreach ($languages as $langcode => $language) {
+      // Exclude the default language
+      if ($langcode !== $default_langcode) {
+        $language_options[$langcode] = $language->getName();
+      }
+    }
+
+    $form['translation_settings']['translation_languages'] = [
+      '#type' => 'checkboxes',
+      '#title' => $this->t('Languages to Translate'),
+      '#description' => $this->t('Select which languages to automatically translate articles into. The original article will be created in the default language (@default).', [
+        '@default' => $languages[$default_langcode]->getName(),
+      ]),
+      '#options' => $language_options,
+      '#default_value' => $config->get('translation_languages') ?: [],
+      '#states' => [
+        'visible' => [
+          ':input[name="translation_enabled"]' => ['checked' => TRUE],
+        ],
+      ],
+    ];
+
+    if (empty($language_options)) {
+      $form['translation_settings']['translation_warning'] = [
+        '#markup' => '<p>' . $this->t('No additional languages are configured. Go to Configuration → Regional → Languages to add more languages.') . '</p>',
+      ];
+    }
+
     // Trends Feed Settings
     $form['feed_settings'] = [
       '#type' => 'details',
@@ -438,6 +486,8 @@ class SettingsForm extends ConfigFormBase {
       ->set('tag_vocabulary', $form_state->getValue('tag_vocabulary'))
       ->set('domain_id', $form_state->getValue('domain_id'))
       ->set('skip_domain_source', (bool) $form_state->getValue('skip_domain_source'))
+      ->set('translation_enabled', (bool) $form_state->getValue('translation_enabled'))
+      ->set('translation_languages', array_filter($form_state->getValue('translation_languages')))
       ->set('trends_url', $form_state->getValue('trends_url'))
       ->set('filtered_tlds', $form_state->getValue('filtered_tlds'))
       ->set('min_traffic', $form_state->getValue('min_traffic'))
