@@ -1191,12 +1191,20 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
         // Create translation prompt with explicit HTML preservation instructions
         $translation_prompt = sprintf(
-          "You are a professional translator. Translate the following article from English to %s.\n\nIMPORTANT INSTRUCTIONS:\n1. TRANSLATE all text content to %s\n2. PRESERVE all HTML tags exactly as they are (do not modify <div>, <iframe>, <p>, <br>, or any other tags)\n3. Only translate the text BETWEEN the HTML tags, not the tags themselves\n4. Keep all HTML attributes, URLs, and structure unchanged\n\nExample:\nInput: <p>Hello world</p>\nOutput: <p>[Translated: Hello world]</p>\n\nTitle to translate:\n%s\n\nBody (HTML) to translate:\n%s\n\nProvide ONLY the translation in this exact format (no explanations):\n[Translated title]\n---TITLE_SEPARATOR---\n[Translated body with HTML preserved]",
+          "You are a professional translator. Your task is to TRANSLATE (not transliterate) the following article to %s.\n\nCRITICAL INSTRUCTIONS:\n1. TRANSLATE the text content completely to %s - do NOT keep original language, do NOT transliterate\n2. For HTML body: PRESERVE all HTML tags exactly (<div>, <iframe>, <p>, <br>, etc.) but TRANSLATE the text between tags\n3. Keep all HTML attributes, URLs, and structure unchanged\n4. TRANSLATE everything including titles, quotes, and all text content\n\nExample of correct translation:\nInput Title: Вигідні покупки на Чорну п'ятницю\nCorrect Spanish Output: Compras rentables en el Viernes Negro\nCorrect German Output: Günstige Einkäufe am Black Friday\nWRONG: Вigіdni pоkupki (this is transliteration, NOT translation)\n\nInput Body: <p>Це важлива інформація</p>\nCorrect Spanish Output: <p>Esta es información importante</p>\nCorrect German Output: <p>Dies ist wichtige Information</p>\n\n=== CONTENT TO TRANSLATE ===\n\nTitle:\n%s\n\nBody (HTML):\n%s\n\n=== OUTPUT FORMAT ===\nProvide ONLY the translation (no explanations, no notes) in this exact format:\n[Fully translated title in %s]\n---TITLE_SEPARATOR---\n[Fully translated body with HTML preserved]",
           $language_name,
           $language_name,
           $original_title,
-          $original_body
+          $original_body,
+          $language_name
         );
+
+        // Log the full prompt for debugging
+        $this->logger->info('Translation prompt for node @nid to @lang:<br><pre>@prompt</pre>', [
+          '@nid' => $node_id,
+          '@lang' => $langcode,
+          '@prompt' => $translation_prompt,
+        ]);
 
         // Call AI to translate
         if ($ai_provider === 'openai') {
