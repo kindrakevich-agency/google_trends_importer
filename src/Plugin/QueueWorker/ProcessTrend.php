@@ -1243,17 +1243,17 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
           '@preview' => $body_preview,
         ]);
 
-        // Create translation with all base fields
+        // Create translation with base fields (without body initially)
         $translation = $node->addTranslation($langcode, [
           'title' => $translated_data['title'],
-          'body' => [
-            'value' => $translated_data['body'],
-            'format' => 'full_html',
-          ],
           'uid' => $node->getOwnerId(), // Copy author from original node
           'created' => $node->getCreatedTime(), // Copy created timestamp
           'status' => $node->isPublished() ? 1 : 0, // Copy published status
         ]);
+
+        // Set body field explicitly AFTER creating translation
+        $translation->body->value = $translated_data['body'];
+        $translation->body->format = 'full_html';
 
         $this->logger->debug('Translation object created for @lang - Title: "@title", Body value length: @length', [
           '@lang' => $langcode,
@@ -1366,6 +1366,10 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       // If separator not found, log warning
       $this->logger->warning('Translation response does not contain expected separator. Using fallback values.');
     }
+
+    // Remove common prefixes from title like "Title:", "Title to translate:", etc.
+    $result['title'] = preg_replace('/^(Title|Translated Title|Title to translate):\s*/i', '', $result['title']);
+    $result['title'] = trim($result['title']);
 
     // Validate that we got actual content
     if (empty($result['title']) || $result['title'] === $fallback_title) {
