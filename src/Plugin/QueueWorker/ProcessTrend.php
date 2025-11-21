@@ -314,12 +314,7 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       
       $node_id = $this->createArticleNode($trend, $parsed['title'], $parsed['body'], $parsed['tags'], $config, $media);
 
-      // Translate article if translation is enabled
-      if ($config->get('translation_enabled')) {
-        $this->translateArticle($node_id, $parsed['title'], $parsed['body'], $parsed['tags'], $config);
-      }
-
-      // Update trend record with processing info
+      // Update trend record with processing info BEFORE translation
       $this->database->update('google_trends_data')
         ->fields([
           'processed' => 1,
@@ -330,6 +325,11 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         ->execute();
 
       $this->logger->info(sprintf('Successfully processed and created article for Trend ID %d. Cost: $%s', $trend->id, number_format($processing_cost, 6)));
+
+      // Translate article if translation is enabled - AFTER marking as processed
+      if ($config->get('translation_enabled')) {
+        $this->translateArticle($node_id, $parsed['title'], $parsed['body'], $parsed['tags'], $config);
+      }
 
     } catch (\Exception $e) {
       $this->logger->error('Failed to process Trend ID @id: @message', [
@@ -1140,8 +1140,9 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       return;
     }
 
-    // Load the original node
-    $node = $this->entityTypeManager->getStorage('node')->load($node_id);
+    // Load the original node - IMPORTANT: Load fresh from storage
+    $node_storage = $this->entityTypeManager->getStorage('node');
+    $node = $node_storage->load($node_id);
     if (!$node) {
       $this->logger->error('Failed to load node @nid for translation', ['@nid' => $node_id]);
       return;
@@ -1163,6 +1164,15 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       }
 
       try {
+        // Check if translation already exists
+        if ($node->hasTranslation($langcode)) {
+          $this->logger->warning('Translation for node @nid in @lang already exists, skipping', [
+            '@nid' => $node_id,
+            '@lang' => $langcode,
+          ]);
+          continue;
+        }
+
         $this->logger->info('Translating node @nid to @lang', [
           '@nid' => $node_id,
           '@lang' => $langcode,
@@ -1213,44 +1223,44 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         ]);
 
         // Create translation
-        if (!$node->hasTranslation($langcode)) {
-          $translation = $node->addTranslation($langcode, [
-            'title' => $translated_data['title'],
-            'body' => [
-              'value' => $translated_data['body'],
-              'format' => 'full_html',
-            ],
-            'uid' => $node->getOwnerId(), // Copy author from original node
-          ]);
+        $translation = $node->addTranslation($langcode, [
+          'title' => $translated_data['title'],
+          'body' => [
+            'value' => $translated_data['body'],
+            'format' => 'full_html',
+          ],
+          'uid' => $node->getOwnerId(), // Copy author from original node
+        ]);
 
-          // Attach same taxonomy terms to translation
-          if (!empty($tag_field) && !empty($tag_ids) && $translation->hasField($tag_field)) {
-            $translation->set($tag_field, $tag_ids);
-          }
-
-          // Copy domain fields from original node if Domain module is enabled
-          if (\Drupal::moduleHandler()->moduleExists('domain')) {
-            if ($node->hasField('field_domain_access') && $translation->hasField('field_domain_access')) {
-              $domain_access = $node->get('field_domain_access')->getValue();
-              if (!empty($domain_access)) {
-                $translation->set('field_domain_access', $domain_access);
-              }
-            }
-            if ($node->hasField('field_domain_source') && $translation->hasField('field_domain_source')) {
-              $domain_source = $node->get('field_domain_source')->getValue();
-              if (!empty($domain_source)) {
-                $translation->set('field_domain_source', $domain_source);
-              }
-            }
-          }
-
-          $translation->save();
-
-          $this->logger->info('Created translation for node @nid in @lang', [
-            '@nid' => $node_id,
-            '@lang' => $langcode,
-          ]);
+        // Attach same taxonomy terms to translation
+        if (!empty($tag_field) && !empty($tag_ids) && $translation->hasField($tag_field)) {
+          $translation->set($tag_field, $tag_ids);
         }
+
+        // Copy domain fields from original node if Domain module is enabled
+        if (\Drupal::moduleHandler()->moduleExists('domain')) {
+          if ($node->hasField('field_domain_access') && $translation->hasField('field_domain_access')) {
+            $domain_access = $node->get('field_domain_access')->getValue();
+            if (!empty($domain_access)) {
+              $translation->set('field_domain_access', $domain_access);
+            }
+          }
+          if ($node->hasField('field_domain_source') && $translation->hasField('field_domain_source')) {
+            $domain_source = $node->get('field_domain_source')->getValue();
+            if (!empty($domain_source)) {
+              $translation->set('field_domain_source', $domain_source);
+            }
+          }
+        }
+
+        // IMPORTANT: Save the parent node, not the translation directly
+        $node->save();
+
+        $this->logger->info('Created translation for node @nid in @lang with title: @title', [
+          '@nid' => $node_id,
+          '@lang' => $langcode,
+          '@title' => $translated_data['title'],
+        ]);
 
       } catch (\Exception $e) {
         $this->logger->error('Failed to translate node @nid to @lang: @message', [
