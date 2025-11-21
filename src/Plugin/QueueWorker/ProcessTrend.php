@@ -1153,8 +1153,9 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       }
 
       try {
-        // IMPORTANT: Reload node fresh from storage for EACH language
+        // IMPORTANT: Clear entity cache and reload node fresh from storage for EACH language
         // This prevents conflicts when saving multiple translations
+        $node_storage->resetCache([$node_id]);
         $node = $node_storage->load($node_id);
         if (!$node) {
           $this->logger->error('Failed to load node @nid for translation to @lang', [
@@ -1163,6 +1164,13 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
           ]);
           continue;
         }
+
+        // Log which node we're working on to verify correct node ID
+        $this->logger->info('Loading node @nid (current title: "@title") for translation to @lang', [
+          '@nid' => $node_id,
+          '@title' => $node->getTitle(),
+          '@lang' => $langcode,
+        ]);
 
         // Check if translation already exists
         if ($node->hasTranslation($langcode)) {
@@ -1291,25 +1299,35 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
           }
         }
 
+        // Log before saving
+        $this->logger->info('About to save translation for node @nid in @lang', [
+          '@nid' => $node->id(),
+          '@lang' => $langcode,
+        ]);
+
         // IMPORTANT: Save the parent node, not the translation directly
         $node->save();
 
-        // Verify translation was saved by reloading
+        // Clear cache and verify translation was saved by reloading
+        $node_storage->resetCache([$node_id]);
         $verification_node = $node_storage->load($node_id);
+
         if ($verification_node && $verification_node->hasTranslation($langcode)) {
           $saved_translation = $verification_node->getTranslation($langcode);
           $saved_body = $saved_translation->body->value;
           $saved_body_preview = mb_substr($saved_body, 0, 500);
 
-          $this->logger->info('Successfully created translation for node @nid in @lang. Title: "@title", Body length: @length chars', [
+          $this->logger->info('Successfully saved translation for node @nid (original title: "@orig_title") in @lang. Translation title: "@title", Body length: @length chars', [
             '@nid' => $node_id,
+            '@orig_title' => $verification_node->getTitle(),
             '@lang' => $langcode,
             '@title' => $saved_translation->getTitle(),
             '@length' => strlen($saved_body),
           ]);
 
           // Log body preview to verify it's actually translated
-          $this->logger->debug('Saved body preview for @lang:<br><pre>@preview</pre>', [
+          $this->logger->debug('Saved body preview for node @nid in @lang:<br><pre>@preview</pre>', [
+            '@nid' => $node_id,
             '@lang' => $langcode,
             '@preview' => $saved_body_preview,
           ]);
