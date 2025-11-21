@@ -1175,7 +1175,8 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
         // Create translation prompt with explicit HTML preservation instructions
         $translation_prompt = sprintf(
-          "Translate the following article to %s.\n\nIMPORTANT: For the body, you MUST preserve ALL HTML tags exactly as they are. Only translate the text content between HTML tags. Do NOT modify, remove, or add any HTML tags, attributes, or structure. Keep all <div>, <iframe>, <p>, <br>, and other tags exactly as provided.\n\nTitle: %s\n\nBody (HTML):\n%s\n\nProvide the translation in this exact format:\nTranslated Title\n---TITLE_SEPARATOR---\nTranslated Body (with ALL original HTML tags preserved exactly)",
+          "You are a professional translator. Translate the following article from English to %s.\n\nIMPORTANT INSTRUCTIONS:\n1. TRANSLATE all text content to %s\n2. PRESERVE all HTML tags exactly as they are (do not modify <div>, <iframe>, <p>, <br>, or any other tags)\n3. Only translate the text BETWEEN the HTML tags, not the tags themselves\n4. Keep all HTML attributes, URLs, and structure unchanged\n\nExample:\nInput: <p>Hello world</p>\nOutput: <p>[Translated: Hello world]</p>\n\nTitle to translate:\n%s\n\nBody (HTML) to translate:\n%s\n\nProvide ONLY the translation in this exact format (no explanations):\n[Translated title]\n---TITLE_SEPARATOR---\n[Translated body with HTML preserved]",
+          $language_name,
           $language_name,
           $original_title,
           $original_body
@@ -1192,9 +1193,24 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
           $translated_response = $result['content'];
         }
 
+        // Log the AI response for debugging
+        $this->logger->debug('Translation AI Response for node @nid to @lang:<br><pre>@response</pre>', [
+          '@nid' => $node_id,
+          '@lang' => $langcode,
+          '@response' => $translated_response,
+        ]);
+
         // Parse the translated response
         $separator = '---TITLE_SEPARATOR---';
         $translated_data = $this->parseTranslationResponse($translated_response, $separator, $original_title, $original_body);
+
+        // Log what was parsed
+        $this->logger->debug('Parsed translation for node @nid to @lang - Title: @title, Body length: @length', [
+          '@nid' => $node_id,
+          '@lang' => $langcode,
+          '@title' => $translated_data['title'],
+          '@length' => strlen($translated_data['body']),
+        ]);
 
         // Create translation
         if (!$node->hasTranslation($langcode)) {
