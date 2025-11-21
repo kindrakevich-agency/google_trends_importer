@@ -1173,9 +1173,9 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         $language = $language_manager->getLanguage($langcode);
         $language_name = $language ? $language->getName() : $langcode;
 
-        // Create translation prompt
+        // Create translation prompt with explicit HTML preservation instructions
         $translation_prompt = sprintf(
-          "Translate the following article to %s. Maintain the HTML formatting in the body.\n\nTitle: %s\n\nBody:\n%s\n\nProvide the translation in this exact format:\nTranslated Title\n---TITLE_SEPARATOR---\nTranslated Body (with HTML)",
+          "Translate the following article to %s.\n\nIMPORTANT: For the body, you MUST preserve ALL HTML tags exactly as they are. Only translate the text content between HTML tags. Do NOT modify, remove, or add any HTML tags, attributes, or structure. Keep all <div>, <iframe>, <p>, <br>, and other tags exactly as provided.\n\nTitle: %s\n\nBody (HTML):\n%s\n\nProvide the translation in this exact format:\nTranslated Title\n---TITLE_SEPARATOR---\nTranslated Body (with ALL original HTML tags preserved exactly)",
           $language_name,
           $original_title,
           $original_body
@@ -1204,11 +1204,28 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
               'value' => $translated_data['body'],
               'format' => 'full_html',
             ],
+            'uid' => $node->getOwnerId(), // Copy author from original node
           ]);
 
           // Attach same taxonomy terms to translation
           if (!empty($tag_field) && !empty($tag_ids) && $translation->hasField($tag_field)) {
             $translation->set($tag_field, $tag_ids);
+          }
+
+          // Copy domain fields from original node if Domain module is enabled
+          if (\Drupal::moduleHandler()->moduleExists('domain')) {
+            if ($node->hasField('field_domain_access') && $translation->hasField('field_domain_access')) {
+              $domain_access = $node->get('field_domain_access')->getValue();
+              if (!empty($domain_access)) {
+                $translation->set('field_domain_access', $domain_access);
+              }
+            }
+            if ($node->hasField('field_domain_source') && $translation->hasField('field_domain_source')) {
+              $domain_source = $node->get('field_domain_source')->getValue();
+              if (!empty($domain_source)) {
+                $translation->set('field_domain_source', $domain_source);
+              }
+            }
           }
 
           $translation->save();
