@@ -1140,23 +1140,12 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       return;
     }
 
-    // Load the original node - IMPORTANT: Load fresh from storage
-    $node_storage = $this->entityTypeManager->getStorage('node');
-    $node = $node_storage->load($node_id);
-    if (!$node) {
-      $this->logger->error('Failed to load node @nid for translation', ['@nid' => $node_id]);
-      return;
-    }
-
     // Get AI provider settings
     $ai_provider = $config->get('ai_provider') ?: 'openai';
 
     // Get tag IDs for reuse in translations (ONLY existing terms)
+    $node_storage = $this->entityTypeManager->getStorage('node');
     $tag_field = $config->get('tag_field');
-    $tag_ids = [];
-    if (!empty($tag_field) && !empty($tags) && $node->hasField($tag_field)) {
-      $tag_ids = $this->getExistingTagIds($tags, $config);
-    }
 
     foreach ($translation_languages as $langcode) {
       if (!$langcode) {
@@ -1164,6 +1153,17 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       }
 
       try {
+        // IMPORTANT: Reload node fresh from storage for EACH language
+        // This prevents conflicts when saving multiple translations
+        $node = $node_storage->load($node_id);
+        if (!$node) {
+          $this->logger->error('Failed to load node @nid for translation to @lang', [
+            '@nid' => $node_id,
+            '@lang' => $langcode,
+          ]);
+          continue;
+        }
+
         // Check if translation already exists
         if ($node->hasTranslation($langcode)) {
           $this->logger->warning('Translation for node @nid in @lang already exists, skipping', [
@@ -1171,6 +1171,12 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
             '@lang' => $langcode,
           ]);
           continue;
+        }
+
+        // Get tag IDs fresh for each translation
+        $tag_ids = [];
+        if (!empty($tag_field) && !empty($tags) && $node->hasField($tag_field)) {
+          $tag_ids = $this->getExistingTagIds($tags, $config);
         }
 
         $this->logger->info('Translating node @nid to @lang', [
@@ -1215,7 +1221,7 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         $translated_data = $this->parseTranslationResponse($translated_response, $separator, $original_title, $original_body);
 
         // Log what was parsed
-        $this->logger->debug('Parsed translation for node @nid to @lang - Title: @title, Body length: @length', [
+        $this->logger->info('Parsed translation for node @nid to @lang - Title: "@title", Body length: @length chars', [
           '@nid' => $node_id,
           '@lang' => $langcode,
           '@title' => $translated_data['title'],
@@ -1230,6 +1236,11 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
             'format' => 'full_html',
           ],
           'uid' => $node->getOwnerId(), // Copy author from original node
+        ]);
+
+        $this->logger->debug('Translation object created for @lang, title set to: "@title"', [
+          '@lang' => $langcode,
+          '@title' => $translation->getTitle(),
         ]);
 
         // Attach same taxonomy terms to translation
@@ -1256,11 +1267,22 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         // IMPORTANT: Save the parent node, not the translation directly
         $node->save();
 
-        $this->logger->info('Created translation for node @nid in @lang with title: @title', [
-          '@nid' => $node_id,
-          '@lang' => $langcode,
-          '@title' => $translated_data['title'],
-        ]);
+        // Verify translation was saved by reloading
+        $verification_node = $node_storage->load($node_id);
+        if ($verification_node && $verification_node->hasTranslation($langcode)) {
+          $saved_translation = $verification_node->getTranslation($langcode);
+          $this->logger->info('Successfully created translation for node @nid in @lang. Title: "@title", Body length: @length chars', [
+            '@nid' => $node_id,
+            '@lang' => $langcode,
+            '@title' => $saved_translation->getTitle(),
+            '@length' => strlen($saved_translation->body->value),
+          ]);
+        } else {
+          $this->logger->error('Translation for node @nid in @lang was not saved properly!', [
+            '@nid' => $node_id,
+            '@lang' => $langcode,
+          ]);
+        }
 
       } catch (\Exception $e) {
         $this->logger->error('Failed to translate node @nid to @lang: @message', [
@@ -1293,12 +1315,28 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       'body' => $fallback_body,
     ];
 
+    // Clean up response - remove any potential markdown code blocks
+    $response = preg_replace('/^```[a-z]*\n/m', '', $response);
+    $response = preg_replace('/\n```$/m', '', $response);
+    $response = trim($response);
+
     if (strpos($response, $separator) !== FALSE) {
       $parts = explode($separator, $response, 2);
       $result['title'] = trim($parts[0]);
       if (isset($parts[1])) {
         $result['body'] = trim($parts[1]);
       }
+    } else {
+      // If separator not found, log warning
+      $this->logger->warning('Translation response does not contain expected separator. Using fallback values.');
+    }
+
+    // Validate that we got actual content
+    if (empty($result['title']) || $result['title'] === $fallback_title) {
+      $this->logger->warning('Translated title is empty or unchanged. Using original title.');
+    }
+    if (empty($result['body']) || $result['body'] === $fallback_body) {
+      $this->logger->warning('Translated body is empty or unchanged. Using original body.');
     }
 
     return $result;
