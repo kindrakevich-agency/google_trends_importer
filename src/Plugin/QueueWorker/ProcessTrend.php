@@ -1236,7 +1236,14 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
           '@length' => strlen($translated_data['body']),
         ]);
 
-        // Create translation
+        // Log first 500 chars of parsed body for verification
+        $body_preview = mb_substr($translated_data['body'], 0, 500);
+        $this->logger->debug('Parsed body preview for @lang:<br><pre>@preview</pre>', [
+          '@lang' => $langcode,
+          '@preview' => $body_preview,
+        ]);
+
+        // Create translation with all base fields
         $translation = $node->addTranslation($langcode, [
           'title' => $translated_data['title'],
           'body' => [
@@ -1244,12 +1251,24 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
             'format' => 'full_html',
           ],
           'uid' => $node->getOwnerId(), // Copy author from original node
+          'created' => $node->getCreatedTime(), // Copy created timestamp
+          'status' => $node->isPublished() ? 1 : 0, // Copy published status
         ]);
 
-        $this->logger->debug('Translation object created for @lang, title set to: "@title"', [
+        $this->logger->debug('Translation object created for @lang - Title: "@title", Body value length: @length', [
           '@lang' => $langcode,
           '@title' => $translation->getTitle(),
+          '@length' => strlen($translation->body->value),
         ]);
+
+        // Copy image field from original node if it exists
+        $image_field = $config->get('image_field') ?: 'field_image';
+        if ($node->hasField($image_field) && $translation->hasField($image_field)) {
+          $image_values = $node->get($image_field)->getValue();
+          if (!empty($image_values)) {
+            $translation->set($image_field, $image_values);
+          }
+        }
 
         // Attach same taxonomy terms to translation
         if (!empty($tag_field) && !empty($tag_ids) && $translation->hasField($tag_field)) {
@@ -1279,11 +1298,20 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         $verification_node = $node_storage->load($node_id);
         if ($verification_node && $verification_node->hasTranslation($langcode)) {
           $saved_translation = $verification_node->getTranslation($langcode);
+          $saved_body = $saved_translation->body->value;
+          $saved_body_preview = mb_substr($saved_body, 0, 500);
+
           $this->logger->info('Successfully created translation for node @nid in @lang. Title: "@title", Body length: @length chars', [
             '@nid' => $node_id,
             '@lang' => $langcode,
             '@title' => $saved_translation->getTitle(),
-            '@length' => strlen($saved_translation->body->value),
+            '@length' => strlen($saved_body),
+          ]);
+
+          // Log body preview to verify it's actually translated
+          $this->logger->debug('Saved body preview for @lang:<br><pre>@preview</pre>', [
+            '@lang' => $langcode,
+            '@preview' => $saved_body_preview,
           ]);
         } else {
           $this->logger->error('Translation for node @nid in @lang was not saved properly!', [
