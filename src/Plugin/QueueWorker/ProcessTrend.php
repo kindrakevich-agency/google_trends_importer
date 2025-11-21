@@ -427,6 +427,35 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
   }
 
   /**
+   * Call OpenAI API.
+   */
+  protected function callOpenAI($prompt, $model_name) {
+    if (!$this->openAiClient) {
+      throw new \Exception('OpenAI client is not initialized');
+    }
+
+    try {
+      $result = $this->openAiClient->chat()->create([
+        'model' => $model_name,
+        'messages' => [
+          ['role' => 'user', 'content' => $prompt],
+        ],
+      ]);
+
+      return [
+        'content' => $result->choices[0]->message->content,
+        'usage' => [
+          'input_tokens' => $result->usage->promptTokens ?? 0,
+          'output_tokens' => $result->usage->completionTokens ?? 0,
+        ],
+      ];
+    } catch (\Exception $e) {
+      $this->logger->error('OpenAI API request failed: @message', ['@message' => $e->getMessage()]);
+      throw $e;
+    }
+  }
+
+  /**
    * Call Claude API.
    */
   protected function callClaudeApi($prompt, $model_name) {
@@ -1155,10 +1184,12 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         // Call AI to translate
         if ($ai_provider === 'openai') {
           $model_name = $config->get('openai_model') ?: 'gpt-4o-mini';
-          $translated_response = $this->callOpenAI($translation_prompt, $model_name);
+          $result = $this->callOpenAI($translation_prompt, $model_name);
+          $translated_response = $result['content'];
         } else {
           $model_name = $config->get('claude_model') ?: 'claude-3-5-sonnet-20241022';
-          $translated_response = $this->callClaudeApi($translation_prompt, $model_name);
+          $result = $this->callClaudeApi($translation_prompt, $model_name);
+          $translated_response = $result['content'];
         }
 
         // Parse the translated response
