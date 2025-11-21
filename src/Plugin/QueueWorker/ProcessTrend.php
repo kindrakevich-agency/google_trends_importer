@@ -328,7 +328,8 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
       // Translate article if translation is enabled - AFTER marking as processed
       if ($config->get('translation_enabled')) {
-        $this->translateArticle($node_id, $parsed['title'], $parsed['body'], $parsed['tags'], $config);
+        // Pass only node_id and tags - let translateArticle read title/body from the node itself
+        $this->translateArticle($node_id, $parsed['tags'], $config);
       }
 
     } catch (\Exception $e) {
@@ -1124,16 +1125,12 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
    *
    * @param int $node_id
    *   The node ID to translate.
-   * @param string $original_title
-   *   The original title.
-   * @param string $original_body
-   *   The original body.
    * @param array $tags
    *   The tags array.
    * @param \Drupal\Core\Config\ImmutableConfig $config
    *   The module configuration.
    */
-  protected function translateArticle($node_id, $original_title, $original_body, $tags, $config) {
+  protected function translateArticle($node_id, $tags, $config) {
     $translation_languages = $config->get('translation_languages');
 
     if (empty($translation_languages)) {
@@ -1147,19 +1144,50 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
     $node_storage = $this->entityTypeManager->getStorage('node');
     $tag_field = $config->get('tag_field');
 
+    // Load the original node ONCE to get the source title and body
+    $source_node = $node_storage->load($node_id);
+    if (!$source_node) {
+      $this->logger->error('Failed to load source node @nid for translation', ['@nid' => $node_id]);
+      return;
+    }
+
+    // Get original title and body from the actual node
+    $original_title = $source_node->getTitle();
+    $original_body = $source_node->body->value;
+
+    $this->logger->info('Starting translation for node @nid - Original title: "@title", Body length: @length', [
+      '@nid' => $node_id,
+      '@title' => $original_title,
+      '@length' => strlen($original_body),
+    ]);
+
     foreach ($translation_languages as $langcode) {
       if (!$langcode) {
         continue;
       }
 
       try {
-        // IMPORTANT: Clear entity cache and reload node fresh from storage for EACH language
-        // This prevents conflicts when saving multiple translations
-        $node_storage->resetCache([$node_id]);
+        // CRITICAL: Clear ALL entity caches before each translation
+        // This prevents any cached entities from interfering
+        \Drupal::entityTypeManager()->clearCachedDefinitions();
+        \Drupal::service('entity.memory_cache')->deleteAll();
+        $node_storage->resetCache();
+
+        // Now load the specific node fresh from database
         $node = $node_storage->load($node_id);
         if (!$node) {
           $this->logger->error('Failed to load node @nid for translation to @lang', [
             '@nid' => $node_id,
+            '@lang' => $langcode,
+          ]);
+          continue;
+        }
+
+        // Verify we have the correct node by checking its ID matches what we expect
+        if ($node->id() != $node_id) {
+          $this->logger->error('CRITICAL: Loaded node ID @loaded does not match expected ID @expected for translation to @lang', [
+            '@loaded' => $node->id(),
+            '@expected' => $node_id,
             '@lang' => $langcode,
           ]);
           continue;
@@ -1299,17 +1327,23 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
           }
         }
 
-        // Log before saving
-        $this->logger->info('About to save translation for node @nid in @lang', [
+        // Log before saving with detailed info
+        $this->logger->info('About to save translation for node @nid (title: "@title") in @lang. Translation title: "@trans_title"', [
           '@nid' => $node->id(),
+          '@title' => $node->getTitle(),
           '@lang' => $langcode,
+          '@trans_title' => $translation->getTitle(),
         ]);
 
         // IMPORTANT: Save the parent node, not the translation directly
         $node->save();
 
-        // Clear cache and verify translation was saved by reloading
-        $node_storage->resetCache([$node_id]);
+        // CRITICAL: Clear ALL caches after save to prevent affecting other nodes
+        \Drupal::entityTypeManager()->clearCachedDefinitions();
+        \Drupal::service('entity.memory_cache')->deleteAll();
+        $node_storage->resetCache();
+
+        // Reload to verify
         $verification_node = $node_storage->load($node_id);
 
         if ($verification_node && $verification_node->hasTranslation($langcode)) {
