@@ -1139,21 +1139,19 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
     // Get AI provider settings
     $ai_provider = $config->get('ai_provider') ?: 'openai';
-
-    // Get tag IDs for reuse in translations (ONLY existing terms)
-    $node_storage = $this->entityTypeManager->getStorage('node');
     $tag_field = $config->get('tag_field');
 
     // Load the original node ONCE to get the source title and body
+    $node_storage = $this->entityTypeManager->getStorage('node');
     $source_node = $node_storage->load($node_id);
     if (!$source_node) {
       $this->logger->error('Failed to load source node @nid for translation', ['@nid' => $node_id]);
       return;
     }
 
-    // Get original title and body from the actual node
-    $original_title = $source_node->getTitle();
-    $original_body = $source_node->body->value;
+    // Get original title and body from the actual node - create string copies
+    $original_title = (string) $source_node->getTitle();
+    $original_body = (string) $source_node->body->value;
 
     $this->logger->info('Starting translation for node @nid - Original title: "@title", Body length: @length', [
       '@nid' => $node_id,
@@ -1167,10 +1165,13 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
       }
 
       try {
-        // CRITICAL: Clear ALL entity caches before each translation
+        // CRITICAL: Clear ALL entity caches AND get fresh storage instance for each translation
         // This prevents any cached entities from interfering
         \Drupal::entityTypeManager()->clearCachedDefinitions();
         \Drupal::service('entity.memory_cache')->deleteAll();
+
+        // Get a completely fresh node storage instance
+        $node_storage = $this->entityTypeManager->getStorage('node');
         $node_storage->resetCache();
 
         // Now load the specific node fresh from database
@@ -1264,16 +1265,20 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         $separator = '---TITLE_SEPARATOR---';
         $translated_data = $this->parseTranslationResponse($translated_response, $separator, $original_title, $original_body);
 
+        // CRITICAL: Create isolated copies of translated strings to prevent reference sharing
+        $translated_title = (string) $translated_data['title'];
+        $translated_body = (string) $translated_data['body'];
+
         // Log what was parsed
         $this->logger->info('Parsed translation for node @nid to @lang - Title: "@title", Body length: @length chars', [
           '@nid' => $node_id,
           '@lang' => $langcode,
-          '@title' => $translated_data['title'],
-          '@length' => strlen($translated_data['body']),
+          '@title' => $translated_title,
+          '@length' => strlen($translated_body),
         ]);
 
         // Log first 500 chars of parsed body for verification
-        $body_preview = mb_substr($translated_data['body'], 0, 500);
+        $body_preview = mb_substr($translated_body, 0, 500);
         $this->logger->debug('Parsed body preview for @lang:<br><pre>@preview</pre>', [
           '@lang' => $langcode,
           '@preview' => $body_preview,
@@ -1281,15 +1286,18 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
 
         // Create translation with base fields (without body initially)
         $translation = $node->addTranslation($langcode, [
-          'title' => $translated_data['title'],
+          'title' => $translated_title,
           'uid' => $node->getOwnerId(), // Copy author from original node
           'created' => $node->getCreatedTime(), // Copy created timestamp
           'status' => $node->isPublished() ? 1 : 0, // Copy published status
         ]);
 
-        // Set body field explicitly AFTER creating translation
-        $translation->body->value = $translated_data['body'];
-        $translation->body->format = 'full_html';
+        // CRITICAL: Use set() method for body to create new field item
+        // Direct property assignment ($translation->body->value) may share field objects
+        $translation->set('body', [
+          'value' => $translated_body,
+          'format' => 'full_html',
+        ]);
 
         $this->logger->debug('Translation object created for @lang - Title: "@title", Body value length: @length', [
           '@lang' => $langcode,
