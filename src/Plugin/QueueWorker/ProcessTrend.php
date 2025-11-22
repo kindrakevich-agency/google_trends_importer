@@ -1346,6 +1346,23 @@ class ProcessTrend extends QueueWorkerBase implements ContainerFactoryPluginInte
         // IMPORTANT: Save the parent node, not the translation directly
         $node->save();
 
+        // Generate pathauto alias for the translation if pathauto module is enabled
+        if (\Drupal::moduleHandler()->moduleExists('pathauto')) {
+          try {
+            $pathauto_generator = \Drupal::service('pathauto.generator');
+            $saved_translation = $node->getTranslation($langcode);
+            $pathauto_generator->updateEntityAlias($saved_translation, 'insert');
+            $this->logger->info('Generated pathauto alias for translation node @nid in @lang', [
+              '@nid' => $node_id,
+              '@lang' => $langcode,
+            ]);
+          } catch (\Exception $e) {
+            $this->logger->warning('Failed to generate pathauto alias for translation: @message', [
+              '@message' => $e->getMessage(),
+            ]);
+          }
+        }
+
         // CRITICAL: Clear ALL caches after save to prevent affecting other nodes
         \Drupal::entityTypeManager()->clearCachedDefinitions();
         \Drupal::service('entity.memory_cache')->deleteAll();
